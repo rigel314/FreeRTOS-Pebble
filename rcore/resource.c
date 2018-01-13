@@ -217,7 +217,7 @@ uint8_t *resource_fully_load_res_system(ResHandle res_handle)
     
     size_t sz = resource_size(res_handle);
     
-    uint8_t *buffer = app_calloc(1, sz);
+    uint8_t *buffer = calloc(1, sz);
     
     if (buffer == NULL)
     {

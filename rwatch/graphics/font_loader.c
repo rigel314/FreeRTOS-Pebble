@@ -8,22 +8,27 @@
 #include "rebbleos.h"
 #include "librebble.h"
 
+/* Ah yes, the old LRU cache of one.  It will make more sense once we cache
+ * fonts in the app heap, I suppose.  */
+#define CACHED_FONTS 1
+
 // TODO This is still somewhat sketchy in that I'm not convinced some of these magic offsets
 // are right
 
 uint16_t _fonts_get_resource_id_for_key(const char *key);
 
-
 GFont fonts_get_system_font_by_resource_id(uint32_t resource_id);
 
 typedef struct GFontCache
 {
+    uint32_t loaded;
+    uint32_t used;
     uint32_t resource_id;
     GFont font;
 } GFontCache;
 
-static GFontCache _cached_fonts[5];
-static uint8_t _cached_count = 0;
+static GFontCache _cached_fonts[CACHED_FONTS];
+static uint32_t _cache_lru_generation = 0;
 
 // get a system font and then cache it. Ugh.
 // TODO make this not suck (RAM)
@@ -40,27 +45,40 @@ GFont fonts_get_system_font(const char *font_key)
  */
 GFont fonts_get_system_font_by_resource_id(uint32_t resource_id)
 {
-    if (_cached_count == 0)
-    {
-        for (uint8_t i = 0; i < 5; i++)
-            _cached_fonts[i].resource_id = 0;
-    }
-    else
-    {
-        for (uint8_t i = 0; i < 5; i++)
-        {
-            if (_cached_fonts[i].resource_id == resource_id)
-                return _cached_fonts[i].font;
+    int evict = -1;
+    
+    for (int i = 0; i < CACHED_FONTS; i++)
+        if (_cached_fonts[i].resource_id == resource_id) {
+            _cached_fonts[i].used = _cache_lru_generation++;
+            return _cached_fonts[i].font;
         }
+    
+    /* But who to pick? */
+    for (int i = 0; i < CACHED_FONTS; i++)
+        if (!_cached_fonts[i].loaded)
+            evict = i;
+    
+    /* Still nobody? */
+    if (evict == -1) {
+        uint32_t oldest_gen = 0xFFFFFFFF;
+        int oldest = 0;
+        for (int i = 0; i < CACHED_FONTS; i++)
+            if (_cached_fonts[i].used < oldest_gen) {
+                oldest_gen = _cached_fonts[i].used;
+                oldest = i;
+            }
+        KERN_LOG("font_loader", APP_LOG_LEVEL_DEBUG, "evicting font %d", oldest);
+        evict = oldest;
     }
+    
+    free(_cached_fonts[evict].font);
 
     uint8_t *buffer = resource_fully_load_id_system(resource_id);
-
     GFont font = (GFont)buffer;
-
-    _cached_fonts[_cached_count].resource_id = resource_id;
-    _cached_fonts[_cached_count].font = font;
-    _cached_count++;
+    _cached_fonts[evict].loaded = 1;
+    _cached_fonts[evict].used = _cache_lru_generation++;
+    _cached_fonts[evict].resource_id = resource_id;
+    _cached_fonts[evict].font = font;
 
     return font;
 }

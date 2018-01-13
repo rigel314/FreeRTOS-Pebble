@@ -264,11 +264,20 @@ void gbitmap_set_palette(GBitmap *bitmap, GColor *palette, bool free_on_destroy)
  */
 GBitmap *gbitmap_create_with_resource(uint32_t resource_id)
 {
-    uint8_t *png_data = resource_fully_load_id_system(resource_id);
+    /* We have to jump through hoops here, since
+     * gbitmap_create_from_png_data only operates on app-heap data, but
+     * resource_fully_load_id_system only generates system-heap resources.
+     */
     ResHandle res_handle = resource_get_handle_system(resource_id);
     size_t png_data_size = resource_size(res_handle);
-        
-    return gbitmap_create_from_png_data(png_data, png_data_size);
+    uint8_t *png_data = app_calloc(1, png_data_size);
+    if (!png_data)
+        return NULL;
+    resource_load_system(res_handle, png_data);
+    
+    GBitmap *bitmap = gbitmap_create_from_png_data(png_data, png_data_size);
+    
+    return bitmap;
 }
 
 GBitmap *gbitmap_create_with_resource_app(uint32_t resource_id, const struct file *file)
@@ -277,7 +286,9 @@ GBitmap *gbitmap_create_with_resource_app(uint32_t resource_id, const struct fil
     ResHandle res_handle = resource_get_handle_app(resource_id, file);
     size_t png_data_size = resource_size(res_handle);
         
-    return gbitmap_create_from_png_data(png_data, png_data_size);
+    GBitmap *bitmap = gbitmap_create_from_png_data(png_data, png_data_size);
+    
+    return bitmap;
 }
 
 /*

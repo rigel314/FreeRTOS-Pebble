@@ -20,12 +20,17 @@
 \*/
 
 #include "common.h"
+#include "debug.h"
 
 static void n_graphics_prv_setbit(uint8_t * byte, uint8_t pos, bool val) {
     *byte ^= (-val ^ *byte) & (1 << pos);
 }
 
 void n_graphics_set_pixel(n_GContext * ctx, n_GPoint p, n_GColor color) {
+   assert(p.y >= 0);
+   assert(p.x >= 0);
+   assert(p.y < DISPLAY_ROWS);
+   assert(p.x < DISPLAY_COLS);
 #ifdef PBL_BW
     n_graphics_prv_setbit(
         &ctx->fbuf[p.y * __SCREEN_FRAMEBUFFER_ROW_BYTE_AMOUNT + p.x / 8],
