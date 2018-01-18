@@ -92,7 +92,12 @@ $(BUILD)/$(1)/Resources/%_fpga.o: Resources/%_fpga.bin
 Resources/$(1)_fpga.bin:
 	@echo "${RED}Error: platform '$(1)' needs an FPGA binary file in order to build.  Please extract or download one, and put it in $$@. ${STOP}"; exit 1
 
-$(BUILD)/$(1)/fw.qemu_flash.bin: Resources/$(1)_boot.bin $(BUILD)/$(1)/tintin_fw.bin
+Resources/$(1)_spi.bin: Resources/$(1)_splash.png Resources/$(1)_system_resources.pbpack
+	@if test -z "$(FIRMWAREUTILS)"; then echo "${RED}FIRMWAREUTILS not set, plese provide it as a parameter or in your localconfig.mk${STOP}"; exit 1; fi
+	@echo "Baking splash into spi bin";
+	@Utilities/bake_splash.sh $(FIRMWAREUTILS) $(1)
+
+$(BUILD)/$(1)/fw.qemu_flash.bin: Resources/$(1)_boot.bin $(BUILD)/$(1)/tintin_fw.bin Resources/$(1)_spi.bin
 	$(call SAY,[$(1)] QEMU-BIN $$<)
 	@mkdir -p $$(dir $$@)
 	$(QUIET)cat Resources/$(1)_boot.bin $(BUILD)/$(1)/tintin_fw.bin > $(BUILD)/$(1)/fw.qemu_flash.bin
