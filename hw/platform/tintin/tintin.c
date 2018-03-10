@@ -18,6 +18,7 @@
 #include <misc.h>
 #include "rebbleos.h"
 
+#include "stm32_usart.h"
 #include "stm32_power.h"
 #include "stm32_rtc.h"
 
@@ -27,6 +28,14 @@
 
 static inline void _init_USART3();
 static int _debug_initialized;
+
+const hw_usart_t _usart3 = {
+    USART3, STM32_POWER_APB1, GPIO_AF_USART3, 115200, GPIO_Pin_10, GPIO_Pin_11,
+    0, 0, /* no flow control */
+    GPIOC, RCC_AHB1Periph_GPIOC, RCC_APB1Periph_USART3, 
+    {0} /* no dma */
+};
+
 
 void debug_init() {
     _init_USART3();
@@ -40,15 +49,7 @@ void debug_write(const unsigned char *p, size_t len) {
     if (!_debug_initialized)
         return;
 
-    for (i = 0; i < len; i++) {
-        if (p[i] == '\n') {
-            while (!(USART3->SR & USART_SR_TC));
-            USART3->DR = '\r';
-        }
-
-        while (!(USART3->SR & USART_SR_TC));
-        USART3->DR = p[i];
-    }
+    stm32_usart_write(&_usart3, p, len);
 }
 
 /*
@@ -56,32 +57,8 @@ void debug_write(const unsigned char *p, size_t len) {
  */
 static inline void _init_USART3(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct;
-    USART_InitTypeDef USART_InitStruct;
-
-    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_USART3);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOC);
-
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-    GPIO_PinAFConfig(GPIOC, GPIO_PinSource10, GPIO_AF_USART3);
-    GPIO_PinAFConfig(GPIOC, GPIO_PinSource11, GPIO_AF_USART3);
-
-    USART_InitStruct.USART_BaudRate = 230400;
-    USART_InitStruct.USART_WordLength = USART_WordLength_8b;
-    USART_InitStruct.USART_StopBits = USART_StopBits_1;
-    USART_InitStruct.USART_Parity = USART_Parity_No;
-    USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-    USART_InitStruct.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
-    USART_Init(USART3, &USART_InitStruct);
-    USART_Cmd(USART3, ENABLE);
-
-    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOC);
+    stm32_usart_init_device(&_usart3);
+    
 }
 
 /*** platform ***/
@@ -152,9 +129,23 @@ uint16_t hw_ambient_get() {
 /*** backlight init ***/
 
 void hw_backlight_init() {
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+
+    GPIO_InitTypeDef GPIO_InitDef;
+
+    GPIO_InitDef.GPIO_Pin = GPIO_Pin_5;
+    GPIO_InitDef.GPIO_Mode = GPIO_Mode_OUT;
+    GPIO_InitDef.GPIO_OType = GPIO_OType_PP;
+    GPIO_InitDef.GPIO_PuPd = GPIO_PuPd_NOPULL;
+    GPIO_InitDef.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOB, &GPIO_InitDef);
+
+    /* And multivac pronounced "and let there be backlight" */
+    GPIO_SetBits(GPIOB, GPIO_Pin_5);
 }
 
 void hw_backlight_set(uint16_t val) {
+
 }
 
 /* buttons */
@@ -432,8 +423,10 @@ void hw_flash_read_bytes(uint32_t addr, uint8_t *buf, size_t len) {
     for (int i = 0; i < len; i++)
         buf[i] = _hw_flash_txrx(JEDEC_DUMMY);
     
+    /* make sure we are fully clocked out before we drop enable */
+//     delay_us(100);
     _hw_flash_enable(0);
-    
+
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI1);
 }
 

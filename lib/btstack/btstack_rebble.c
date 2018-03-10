@@ -239,18 +239,18 @@ void hal_uart_dma_set_csr_irq_handler( void (*the_irq_handler)(void))
 
 int  hal_uart_dma_set_baud(uint32_t baud)
 {
-    hw_bluetooth_set_baud(baud);
+    stm32_usart_set_baud(hw_bluetooth_get_usart(), baud);
     return 0;
 }
 
 void hal_uart_dma_send_block(const uint8_t *data, uint16_t size)
 {
-    hw_bluetooth_send_dma((uint32_t *)data, size);
+    stm32_usart_send_dma(hw_bluetooth_get_usart(), (uint32_t *)data, size);
 }
 
 void hal_uart_dma_receive_block(uint8_t *data, uint16_t size)
 {
-    hw_bluetooth_recv_dma((uint32_t *)data, size);
+    stm32_usart_recv_dma(hw_bluetooth_get_usart(), (uint32_t *)data, size);
 }
 
 

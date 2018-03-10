@@ -1,10 +1,12 @@
 CFLAGS_snowy_family = $(CFLAGS_stm32f4xx)
+CFLAGS_snowy_family += $(CFLAGS_driver_stm32_usart)
 CFLAGS_snowy_family += $(CFLAGS_driver_stm32_buttons)
 CFLAGS_snowy_family += $(CFLAGS_driver_stm32_power)
 CFLAGS_snowy_family += $(CFLAGS_driver_stm32_rtc)
 CFLAGS_snowy_family += -Ihw/platform/snowy_family
 
 SRCS_snowy_family = $(SRCS_stm32f4xx)
+SRCS_snowy_family += $(SRCS_driver_stm32_usart)
 SRCS_snowy_family += $(SRCS_driver_stm32_buttons)
 SRCS_snowy_family += $(SRCS_driver_stm32_power)
 SRCS_snowy_family += $(SRCS_driver_stm32_rtc)

@@ -16,6 +16,7 @@
 #include "stm32_power.h"
 #include "btstack_rebble.h"
 #include "snowy_bluetooth.h"
+#include "stm32_usart.h"
 
 #define BT_SHUTD        GPIO_Pin_12
 
@@ -23,6 +24,30 @@ static void _bt_reset_hci_dma(void);
 static void _bluetooth_dma_init(void);
 static void _usart1_init(uint32_t baud);
 void do_delay_ms(uint32_t ms);
+
+static hw_usart_t _usart1 = {
+    USART1, STM32_POWER_APB1, GPIO_AF_USART1, 115200, GPIO_Pin_10, GPIO_Pin_9,
+    GPIO_Pin_11, GPIO_Pin_12, /* flow control */
+    GPIOA, RCC_AHB1Periph_GPIOA, RCC_APB2Periph_USART1, 
+    { /* tx: dma stream 7 chan 4, rx: stream 2 chan 4 */
+        RCC_AHB1Periph_DMA2,
+        DMA2_Stream7,
+        DMA2_Stream2,
+        DMA_Channel_4,
+        DMA_Channel_4,
+        8,
+        6,
+        DMA2_Stream7_IRQn,
+        DMA2_Stream2_IRQn,
+        STM32_USART_MK_DMA_FLAGS(7),
+        STM32_USART_MK_DMA_FLAGS(2),
+        DMA_IT_TCIF7,
+        DMA_IT_TCIF2
+    } 
+};
+
+STM32_USART_MK_TX_IRQ_HANDLER(&_usart1, 7, bt_stack_tx_done)
+STM32_USART_MK_RX_IRQ_HANDLER(&_usart1, 2, bt_stack_rx_done)
 
 uint8_t hw_bluetooth_init(void)
 {
@@ -64,8 +89,9 @@ uint8_t hw_bluetooth_init(void)
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource8, GPIO_AF_MCO);
    
     /* configure DMA and set initial speed */
-    _usart1_init(115200);
-    _bluetooth_dma_init();
+//     _usart1_init(115200);
+//     _bluetooth_dma_init();
+    stm32_usart_init_device(&_usart1);
 
     hw_bluetooth_clock_on();
 
@@ -119,8 +145,10 @@ void hw_bluetooth_clock_on(void)
     IWDG_ReloadCounter();
     
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Power ON!");
-    /* XXX TODO NOTE. Until we get eHCILL setup, we can't turn off 
-     * the USART1. That would cause problems */ 
+    /* XXX TODO NOTE. Until we get eHCILL setup, we can't turn off
+ 
+     * the USART1. That would cause problems */
+ 
     /* stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1); */
     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
@@ -176,102 +204,6 @@ uint8_t hw_bluetooth_power_cycle(void)
     return 1;
 }
 
-/*
- * initialise the DMA channels for transferring data
- */
-static void _bluetooth_dma_init(void)
-{
-    NVIC_InitTypeDef nvic_init_struct;
-    DMA_InitTypeDef dma_init_struct;
-    
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-
-    /* TX init */
-    DMA_DeInit(DMA2_Stream7);
-    DMA_StructInit(&dma_init_struct);
-    dma_init_struct.DMA_PeripheralBaseAddr = (uint32_t)&USART1->DR;
-    dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)0;
-    dma_init_struct.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-    dma_init_struct.DMA_Channel = DMA_Channel_4;
-    dma_init_struct.DMA_BufferSize = 1;
-    dma_init_struct.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-    dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    dma_init_struct.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
-    dma_init_struct.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_Mode = DMA_Mode_Normal;
-    dma_init_struct.DMA_Priority = DMA_Priority_VeryHigh;
-    dma_init_struct.DMA_FIFOMode = DMA_FIFOMode_Disable;
-    DMA_Init(DMA2_Stream7, &dma_init_struct);
-    
-    /* Enable the interrupt for stream copy completion */
-    nvic_init_struct.NVIC_IRQChannel = DMA2_Stream2_IRQn;
-    nvic_init_struct.NVIC_IRQChannelPreemptionPriority = 8;
-    nvic_init_struct.NVIC_IRQChannelSubPriority = 0;
-    nvic_init_struct.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_Init(&nvic_init_struct);
-    
-    nvic_init_struct.NVIC_IRQChannel = DMA2_Stream7_IRQn;
-    nvic_init_struct.NVIC_IRQChannelPreemptionPriority = 6;
-    nvic_init_struct.NVIC_IRQChannelSubPriority = 0;
-    nvic_init_struct.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_Init(&nvic_init_struct);    
-    
-    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-}
-
-/*
- * Intialise the USART used for bluetooth
- * 
- * baud: How fast do you want to go. 
- * 0 does not mean any special. 
- * Please use a baud rate apprpriate for the clock
- */
-static void _usart1_init(uint32_t baud)
-{
-    GPIO_InitTypeDef GPIO_InitStruct;
-    USART_InitTypeDef USART_InitStruct;
-    NVIC_InitTypeDef nvic_init_struct;
-
-    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-    
-    /* RX (10) TX (9) */
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_9;
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
-    GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(GPIOA, &GPIO_InitStruct);
-    
-    /* CTS (11) RTS (12) */
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_11 | GPIO_Pin_12;
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-    GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
-    GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
-    GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* AF for USART with hardware flow control */
-    GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, GPIO_AF_USART1);
-    GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, GPIO_AF_USART1);
-    GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, GPIO_AF_USART1);
-    GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, GPIO_AF_USART1);
-    USART_DeInit(USART1);
-    USART_StructInit(&USART_InitStruct);
-
-    USART_InitStruct.USART_BaudRate = baud;
-    USART_InitStruct.USART_WordLength = USART_WordLength_8b;
-    USART_InitStruct.USART_StopBits = USART_StopBits_1;
-    USART_InitStruct.USART_Parity = USART_Parity_No;
-    USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS_CTS;
-    USART_InitStruct.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
-    USART_Init(USART1, &USART_InitStruct);
-    
-    USART_Cmd(USART1, ENABLE);
-    
-    stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-}
 
 /*
  * IRQ trigger for EXT 11 for bluetooth
@@ -294,74 +226,8 @@ void EXTI15_10_IRQHandler(void)
     }
 }
 
-/*
- * IRQ Handler for RX of data complete
- */
-void DMA2_Stream2_IRQHandler(void)	
-{
-    if (DMA_GetITStatus(DMA2_Stream7, DMA_IT_TCIF2) != RESET)
-    {
-        DMA_ClearITPendingBit(DMA2_Stream2, DMA_IT_TCIF2);
-        USART_DMACmd(USART1, USART_DMAReq_Rx, DISABLE);
-        
-        /* release the clocks we are no longer requiring */
-        stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-        stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-        /* Trigger the stack's interrupt handler */
-        bt_stack_rx_done();
-    }
-    else
-    {
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "DMA2 RX ERROR?");
-    }        
-}
 
-/*
- * IRQ Handler for TX of data complete
- */
-void DMA2_Stream7_IRQHandler(void)
-{
-    if (DMA_GetITStatus(DMA2_Stream7, DMA_IT_TCIF7) != RESET)
-    {
-        DMA_ClearITPendingBit(DMA2_Stream7, DMA_IT_TCIF7);
-        USART_DMACmd(USART1, USART_DMAReq_Tx, DISABLE);
 
-        stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-        stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-        stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-        /* Trigger the stack's interrupt handler */
-        bt_stack_tx_done();
-    }
-
-    if (DMA_GetITStatus(DMA2_Stream7, DMA_IT_TEIF7) != RESET)
-    {
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "DMA2 TX ERROR TEIF");
-    }
-    if (DMA_GetITStatus(DMA2_Stream7, DMA_IT_DMEIF7) != RESET)
-    {
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "DMA2 TX ERROR? %d", 2);
-    }
-    if (DMA_GetITStatus(DMA2_Stream7, DMA_IT_FEIF7) != RESET)
-    {
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "DMA2 TX ERROR? %d", 3);
-    }
-}
-
-/* 
- * Set or change the baud rate of the USART
- * This is safe to be done any time there is no transaction in progress
- */
-void hw_bluetooth_set_baud(uint32_t baud)
-{
-    _usart1_init(baud);
-}
 
 /*
  * Configure and enable the IRQ for the Clear To Send interrupt
@@ -428,116 +294,9 @@ void hw_bluetooth_disable_cts_irq(void)
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
 }
 
-/*
- * Request transmission of the buffer provider
- */
-void hw_bluetooth_send_dma(uint32_t *data, uint32_t len)
+hw_usart_t *hw_bluetooth_get_usart(void)
 {
-    /* XXX released in IRQ */
-    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-   
-    DMA_InitTypeDef dma_init_struct;
-    NVIC_InitTypeDef nvic_init_struct;
-    
-    /* Configure DMA controller to manage TX DMA requests */
-    DMA_Cmd(DMA2_Stream7, DISABLE);
-    while (DMA2_Stream7->CR & DMA_SxCR_EN);
-
-    USART_DMACmd(USART1, USART_DMAReq_Tx, DISABLE);
-    DMA_DeInit(DMA2_Stream7);
-    DMA_ClearFlag(DMA2_Stream7, DMA_FLAG_FEIF7|DMA_FLAG_DMEIF7|DMA_FLAG_TEIF7|DMA_FLAG_HTIF7|DMA_FLAG_TCIF7);
-
-    DMA_StructInit(&dma_init_struct);
-    dma_init_struct.DMA_Channel = DMA_Channel_4;
-    /* set the pointer to the USART DR register */
-    dma_init_struct.DMA_PeripheralBaseAddr = (uint32_t)&(USART1->DR);
-    dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)data;
-    dma_init_struct.DMA_BufferSize = len;
-    dma_init_struct.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-    dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    dma_init_struct.DMA_Mode = DMA_Mode_Normal;
-    dma_init_struct.DMA_PeripheralInc  = DMA_PeripheralInc_Disable;
-    dma_init_struct.DMA_FIFOMode  = DMA_FIFOMode_Disable;
-    dma_init_struct.DMA_FIFOThreshold = DMA_FIFOThreshold_Full;
-    dma_init_struct.DMA_PeripheralDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_Priority = DMA_Priority_Low;
-    DMA_Init(DMA2_Stream7, &dma_init_struct);
-    
-    /* Enable the stream IRQ, USART, DMA and then DMA interrupts in that order */
-    NVIC_EnableIRQ(DMA2_Stream7_IRQn);
-    USART_Cmd(USART1, ENABLE);
-    DMA_Cmd(DMA2_Stream7, ENABLE);
-    USART_DMACmd(USART1, USART_DMAReq_Tx, ENABLE);
-    DMA_ITConfig(DMA2_Stream7, DMA_IT_TC, ENABLE);
-}
-
-/*
- * Some data arrived from the bluetooth stack
- */
-void hw_bluetooth_recv_dma(uint32_t *data, size_t len)
-{
-    DMA_InitTypeDef dma_init_struct;
-
-    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-    
-    /* Configure DMA controller to manage RX DMA requests */
-    DMA_Cmd(DMA2_Stream2, DISABLE);
-    while (DMA2_Stream2->CR & DMA_SxCR_EN);
-
-    DMA_ClearFlag(DMA2_Stream2, DMA_FLAG_FEIF2|DMA_FLAG_DMEIF2|DMA_FLAG_TEIF2|DMA_FLAG_HTIF2|DMA_FLAG_TCIF2);
-    DMA_StructInit(&dma_init_struct);
-    /* set the pointer to the USART DR register */
-    dma_init_struct.DMA_PeripheralBaseAddr = (uint32_t) &USART1->DR;
-    dma_init_struct.DMA_Channel = DMA_Channel_4;
-    dma_init_struct.DMA_DIR = DMA_DIR_PeripheralToMemory;
-    dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)data;
-    dma_init_struct.DMA_BufferSize = len;
-    dma_init_struct.DMA_PeripheralInc  = DMA_PeripheralInc_Disable;
-    dma_init_struct.DMA_FIFOMode  = DMA_FIFOMode_Disable;
-    dma_init_struct.DMA_PeripheralDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_Priority = DMA_Priority_High;
-    DMA_Init(DMA2_Stream2, &dma_init_struct);
-    
-    DMA_Cmd(DMA2_Stream2, ENABLE);
-    USART_DMACmd(USART1, USART_DMAReq_Rx, ENABLE);
-    DMA_ITConfig(DMA2_Stream2, DMA_IT_TC, ENABLE);
-}
-
-/* Util function to directly read and write the USART */
-static size_t _bt_write(const void *buf, size_t len)
-{
-    int i;
-    for (i = 0; i < len; i++)
-    {
-        while (!(USART1->SR & USART_FLAG_TXE));
-        USART_SendData(USART1, ((uint8_t *) buf)[i]);
-    }
-    
-    return i;
-}
-
-static size_t _bt_read(void *buf, size_t len)
-{
-    int i;
-    for (i = 0; i < len; i++)
-    {
-        while (!(USART1->SR & USART_FLAG_RXNE));
-        ((uint8_t *) buf)[i] = USART_ReceiveData(USART1);
-    }
-    return i;
+    return &_usart1;
 }
 
 
