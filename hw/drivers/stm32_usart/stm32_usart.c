@@ -1,4 +1,4 @@
-/* display.c
+/* stm_usart.c
  * Implementation of a modular usart driver
  * RebbleOS
  *
@@ -34,57 +34,55 @@ void hw_usart_init(void)
 #define USART_DMA_DISABLED 0
 #define USART_DMA_ENABLED  1
 
-static void _init_dma(hw_usart_t *usart);
-static void _usart_init(hw_usart_t *usart);
+static void _usart_init(stm32_usart_t *usart);
 
-
-void stm32_usart_init_device(hw_usart_t *usart)
+void stm32_usart_init_device(stm32_usart_t *usart)
 {
     _usart_init(usart);
     
-    if (usart->dma.dma_clock > 0)
+    if (usart->dma)
     {
-        _init_dma(usart);
+        stm32_dma_init_device(usart->dma);
     }
 }
 
 
 /*
- * Intialise the USART used for bluetooth
+ * Intialise the USART
  * 
- * baud: How fast do you want to go. 
- * 0 does not mean any special. 
- * Please use a baud rate apprpriate for the clock
  */
-static void _usart_init(hw_usart_t *usart)
+static void _usart_init(stm32_usart_t *usart)
 {
     GPIO_InitTypeDef GPIO_InitStruct;
     USART_InitTypeDef USART_InitStruct;
     NVIC_InitTypeDef nvic_init_struct;
+    assert(usart && usart->config && "Please configure your usart");
+    stm32_usart_config_t *u = usart->config;
 
-    stm32_power_request(usart->usart_periph_bus, usart->usart_clock);
-    stm32_power_request(STM32_POWER_AHB1, usart->gpio_clock);
+    stm32_power_request(u->usart_periph_bus, u->usart_clock);
+    stm32_power_request(STM32_POWER_AHB1, u->gpio_clock);
     
-    /* RX (10) TX (9) */
-    GPIO_InitStruct.GPIO_Pin = usart->gpio_pin_tx | usart->gpio_pin_rx;
+    GPIO_InitStruct.GPIO_Pin = (1 << u->gpio_pin_tx_num) | 
+                               (1 << u->gpio_pin_rx_num);
     GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(usart->gpio_ptr, &GPIO_InitStruct);
+    GPIO_Init(u->gpio_ptr, &GPIO_InitStruct);
     
-    if (usart->gpio_pin_cts > 0)
+    if (u->flow_control_enabled)
     {
-        /* CTS (11) RTS (12) */
-        GPIO_InitStruct.GPIO_Pin = usart->gpio_pin_cts | usart->gpio_pin_rts;
+        /* Enable AF on CTS & RTS */
+        GPIO_InitStruct.GPIO_Pin = (1 << u->gpio_pin_cts_num) | 
+                                   (1 << u->gpio_pin_rts_num);
         GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
         GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
         GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
         GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
-        GPIO_Init(usart->gpio_ptr, &GPIO_InitStruct);
+        GPIO_Init(usart->config->gpio_ptr, &GPIO_InitStruct);
     }
     
-    USART_DeInit(usart->usart);
+    USART_DeInit(u->usart);
     USART_StructInit(&USART_InitStruct);
 
     USART_InitStruct.USART_BaudRate = usart->baud;
@@ -93,223 +91,130 @@ static void _usart_init(hw_usart_t *usart)
     USART_InitStruct.USART_Parity = USART_Parity_No;
     USART_InitStruct.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
     
-    if (usart->gpio_pin_cts > 0)
+    /* Choose AF based on USART. only 6 is on AF 8.
+     * not massively portable */
+    GPIO_PinAFConfig(u->gpio_ptr, u->gpio_pin_tx_num, u->af);
+    GPIO_PinAFConfig(u->gpio_ptr, u->gpio_pin_rx_num, u->af);
+
+    if (u->flow_control_enabled)
     {
         /* AF for USART with hardware flow control */
-        GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, usart->af_usart);
-        GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, usart->af_usart);
-        GPIO_PinAFConfig(GPIOA, GPIO_PinSource11, usart->af_usart);
-        GPIO_PinAFConfig(GPIOA, GPIO_PinSource12, usart->af_usart);
+        GPIO_PinAFConfig(u->gpio_ptr, u->gpio_pin_cts_num, u->af);
+        GPIO_PinAFConfig(u->gpio_ptr, u->gpio_pin_rts_num, u->af);
         
         USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS_CTS;
     }
-    USART_Init(usart->usart, &USART_InitStruct);
+    USART_Init(u->usart, &USART_InitStruct);
     
-    USART_Cmd(usart->usart, ENABLE);
+    USART_Cmd(u->usart, ENABLE);
     
 //     stm32_power_release(STM32_POWER_APB2, usart->usart_clock);
-    stm32_power_release(STM32_POWER_AHB1, usart->gpio_clock);
-}
-
-/*
- * initialise the DMA channels for transferring data
- */
-static void _init_dma(hw_usart_t *usart)
-{
-    NVIC_InitTypeDef nvic_init_struct;
-    DMA_InitTypeDef dma_init_struct;
-    
-    stm32_power_request(STM32_POWER_AHB1, usart->dma.dma_clock);
-
-    /* TX init */
-    DMA_DeInit(usart->dma.dma_tx_stream);
-    DMA_StructInit(&dma_init_struct);
-    dma_init_struct.DMA_PeripheralBaseAddr = (uint32_t)&usart->usart->DR;
-    dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)0;
-    dma_init_struct.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-    dma_init_struct.DMA_Channel = usart->dma.dma_tx_channel;
-    dma_init_struct.DMA_BufferSize = 1;
-    dma_init_struct.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-    dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    dma_init_struct.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
-    dma_init_struct.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_Mode = DMA_Mode_Normal;
-    dma_init_struct.DMA_Priority = DMA_Priority_VeryHigh;
-    dma_init_struct.DMA_FIFOMode = DMA_FIFOMode_Disable;
-    DMA_Init(usart->dma.dma_tx_stream, &dma_init_struct);
-    
-    /* Enable the interrupt for stream copy completion */
-    nvic_init_struct.NVIC_IRQChannel = usart->dma.dma_irq_rx_channel;
-    nvic_init_struct.NVIC_IRQChannelPreemptionPriority = usart->dma.dma_irq_rx_pri;
-    nvic_init_struct.NVIC_IRQChannelSubPriority = 0;
-    nvic_init_struct.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_Init(&nvic_init_struct);
-    
-    nvic_init_struct.NVIC_IRQChannel = usart->dma.dma_irq_tx_channel;
-    nvic_init_struct.NVIC_IRQChannelPreemptionPriority = usart->dma.dma_irq_tx_pri;
-    nvic_init_struct.NVIC_IRQChannelSubPriority = 0;
-    nvic_init_struct.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_Init(&nvic_init_struct);    
-    
-    stm32_power_release(STM32_POWER_AHB1, usart->dma.dma_clock);
+    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
 }
 
 
 /*
  * Request transmission of the buffer provider
  */
-void stm32_usart_send_dma(hw_usart_t *usart, uint32_t *data, uint32_t len)
+void stm32_usart_send_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
 {
     /* XXX released in IRQ */
-    stm32_power_request(usart->usart_periph_bus, usart->usart_clock);
-    stm32_power_request(STM32_POWER_AHB1, usart->gpio_clock);
-    stm32_power_request(STM32_POWER_AHB1, usart->dma.dma_clock);
+    stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->dma->dma_clock);
+    /* reset the DMA controller ready for tx */
+    stm32_dma_tx_reset(usart->dma);
+    /* Turn off the USART DMA for initialisation */
+    USART_DMACmd(usart->config->usart, USART_DMAReq_Tx, DISABLE);
+    /* ready for DMA */
+    stm32_dma_tx_init(usart->dma, &usart->config->usart->DR, data, len);
     
-//     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);   
-//     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-//     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-   
-    DMA_InitTypeDef dma_init_struct;
-    NVIC_InitTypeDef nvic_init_struct;
-    
-    /* Configure DMA controller to manage TX DMA requests */
-    DMA_Cmd(usart->dma.dma_tx_stream, DISABLE);
-    while (usart->dma.dma_tx_stream->CR & DMA_SxCR_EN);
+    /* Turn on our USART and then the USART DMA */
+    USART_Cmd(usart->config->usart, ENABLE);
+    USART_DMACmd(usart->config->usart, USART_DMAReq_Tx, ENABLE);
 
-    USART_DMACmd(usart->usart, USART_DMAReq_Tx, DISABLE);
-    DMA_DeInit(usart->dma.dma_tx_stream);
-    DMA_ClearFlag(usart->dma.dma_tx_stream, usart->dma.dma_tx_channel_flags);
-
-    DMA_StructInit(&dma_init_struct);
-    dma_init_struct.DMA_Channel = usart->dma.dma_tx_channel;
-    /* set the pointer to the USART DR register */
-    dma_init_struct.DMA_PeripheralBaseAddr = (uint32_t)&(usart->usart->DR);
-    dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)data;
-    dma_init_struct.DMA_BufferSize = len;
-    dma_init_struct.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-    dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    dma_init_struct.DMA_Mode = DMA_Mode_Normal;
-    dma_init_struct.DMA_PeripheralInc  = DMA_PeripheralInc_Disable;
-    dma_init_struct.DMA_FIFOMode  = DMA_FIFOMode_Disable;
-    dma_init_struct.DMA_FIFOThreshold = DMA_FIFOThreshold_Full;
-    dma_init_struct.DMA_PeripheralDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_Priority = DMA_Priority_Low;
-    DMA_Init(usart->dma.dma_tx_stream, &dma_init_struct);
-    
-    /* Enable the stream IRQ, USART, DMA and then DMA interrupts in that order */
-    NVIC_EnableIRQ(usart->dma.dma_irq_tx_channel);
-    USART_Cmd(usart->usart, ENABLE);
-    DMA_Cmd(usart->dma.dma_tx_stream, ENABLE);
-    USART_DMACmd(usart->usart, USART_DMAReq_Tx, ENABLE);
-    DMA_ITConfig(usart->dma.dma_tx_stream, DMA_IT_TC, ENABLE);
+    /* Lets go! */
+    stm32_dma_tx_begin(usart->dma);
 }
 
 /*
  * Some data arrived from the bluetooth stack
  */
-void stm32_usart_recv_dma(hw_usart_t *usart, uint32_t *data, size_t len)
+void stm32_usart_recv_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
 {
     DMA_InitTypeDef dma_init_struct;
 
-    stm32_power_request(usart->usart_periph_bus, usart->usart_clock);
-    stm32_power_request(STM32_POWER_AHB1, usart->gpio_clock);
-    stm32_power_request(STM32_POWER_AHB1, usart->dma.dma_clock);
-    
-//     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB); 
-//     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-//     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-    
-    /* Configure DMA controller to manage RX DMA requests */
-    DMA_Cmd(usart->dma.dma_rx_stream, DISABLE);
-    while (usart->dma.dma_rx_stream->CR & DMA_SxCR_EN);
+    stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->dma->dma_clock);
 
-    DMA_ClearFlag(usart->dma.dma_rx_stream, usart->dma.dma_rx_channel_flags);
-    DMA_StructInit(&dma_init_struct);
-    /* set the pointer to the USART DR register */
-    dma_init_struct.DMA_PeripheralBaseAddr = (uint32_t) &usart->usart->DR;
-    dma_init_struct.DMA_Channel = usart->dma.dma_rx_channel;
-    dma_init_struct.DMA_DIR = DMA_DIR_PeripheralToMemory;
-    dma_init_struct.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)data;
-    dma_init_struct.DMA_BufferSize = len;
-    dma_init_struct.DMA_PeripheralInc  = DMA_PeripheralInc_Disable;
-    dma_init_struct.DMA_FIFOMode  = DMA_FIFOMode_Disable;
-    dma_init_struct.DMA_PeripheralDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    dma_init_struct.DMA_Priority = DMA_Priority_High;
-    DMA_Init(usart->dma.dma_rx_stream, &dma_init_struct);
-    
-    DMA_Cmd(usart->dma.dma_rx_stream, ENABLE);
-    USART_DMACmd(usart->usart, USART_DMAReq_Rx, ENABLE);
-    DMA_ITConfig(usart->dma.dma_rx_stream, DMA_IT_TC, ENABLE);
+    /* reset the DMA controller ready for rx */
+    stm32_dma_rx_reset(usart->dma);
+
+    /* init the DMA RX mode */
+    USART_Cmd(usart->config->usart, ENABLE);
+    stm32_dma_rx_init(usart->dma, &usart->config->usart->DR, data, len);
+
+    USART_DMACmd(usart->config->usart, USART_DMAReq_Rx, ENABLE);
+    stm32_dma_rx_begin(usart->dma);
 }
 
 /* 
  * Set or change the baud rate of the USART
  * This is safe to be done any time there is no transaction in progress
  */
-void stm32_usart_set_baud(hw_usart_t *usart, uint32_t baud)
+void stm32_usart_set_baud(stm32_usart_t *usart, uint32_t baud)
 {
     /* we don't want to go through init or set baud in the struct */
     /* just update it */
+    GPIO_InitTypeDef GPIO_InitStruct;
+    USART_InitTypeDef USART_InitStruct;
+
+    stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
+    
+    USART_InitStruct.USART_BaudRate = baud;
+    USART_Init(usart->config->usart, &USART_InitStruct);    
+    USART_Cmd(usart->config->usart, ENABLE);
+    
+    stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
 }
 
 /*
  * IRQ Handler for RX of data complete
  */
-void stm32_usart_rx_isr(hw_usart_t *usart)
+void stm32_usart_rx_isr(stm32_usart_t *usart, dma_callback callback)
 {
-    if (DMA_GetITStatus(usart->dma.dma_rx_stream, usart->dma.dma_rx_irq_flag) != RESET)
-    {
-        DMA_ClearITPendingBit(usart->dma.dma_rx_stream, usart->dma.dma_rx_irq_flag);
-        USART_DMACmd(usart->usart, USART_DMAReq_Rx, DISABLE);
-        
-        /* release the clocks we are no longer requiring */
-        stm32_power_release(usart->usart_periph_bus, usart->usart_clock);
-        stm32_power_release(STM32_POWER_AHB1, usart->gpio_clock);
-        stm32_power_release(STM32_POWER_AHB1, usart->dma.dma_clock);
-        
-//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-//         stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-        /* Trigger the recipient interrupt handler */
-    }
-    else
-    {
-        DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "DMA2 RX ERROR?");
-    }        
+    USART_DMACmd(usart->config->usart, USART_DMAReq_Rx, DISABLE);
+    
+    /* release the clocks we are no longer requiring */
+    stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
+    
+    /* Trigger the recipient interrupt handler */
+    callback();
+    stm32_power_release(STM32_POWER_AHB1, usart->dma->dma_clock);
 }
 
 /*
  * IRQ Handler for TX of data complete
  */
-void stm32_usart_tx_isr(hw_usart_t *usart)
+void stm32_usart_tx_isr(stm32_usart_t *usart, dma_callback callback)
 {
-    if (DMA_GetITStatus(usart->dma.dma_tx_stream, usart->dma.dma_tx_irq_flag) != RESET)
-    {
-        DMA_ClearITPendingBit(usart->dma.dma_tx_stream, usart->dma.dma_tx_irq_flag);
-        USART_DMACmd(usart->usart, USART_DMAReq_Tx, DISABLE);
+    USART_DMACmd(usart->config->usart, USART_DMAReq_Tx, DISABLE);
 
-        stm32_power_release(usart->usart_periph_bus, usart->usart_clock);
-        stm32_power_release(STM32_POWER_AHB1, usart->gpio_clock);
-        stm32_power_release(STM32_POWER_AHB1, usart->dma.dma_clock);
-        
-//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
-//         stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
-//         stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_UART8);
-        /* Trigger the stack's interrupt handler */
-
-    }
-    else
-    {
-        DRV_LOG("HW_USART", APP_LOG_LEVEL_ERROR, "DMA TX ERROR TEIF");
-    }
+    stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
+DRV_LOG("dma", APP_LOG_LEVEL_ERROR, "DMA TX ERROR TEIF");
+    /* Trigger the stack's interrupt handler */
+    callback();
+    stm32_power_release(STM32_POWER_AHB1, usart->dma->dma_clock);
 }
 
 
 /* Util function to directly read and write the USART */
-size_t stm32_usart_write(hw_usart_t *usart, const uint8_t *buf, size_t len)
+size_t stm32_usart_write(stm32_usart_t *usart, const uint8_t *buf, size_t len)
 {
     /* From tintin. Checks TC not TXE
         for (i = 0; i < len; i++) {
@@ -326,23 +231,23 @@ size_t stm32_usart_write(hw_usart_t *usart, const uint8_t *buf, size_t len)
     for (i = 0; i < len; i++)
     {
         if (buf[i] == '\n') {
-            while (!(usart->usart->SR & USART_FLAG_TXE));
-            usart->usart->DR = '\r';
+            while (!(usart->config->usart->SR & USART_FLAG_TXE));
+            usart->config->usart->DR = '\r';
         }
-        while (!(usart->usart->SR & USART_FLAG_TXE));
-        USART_SendData(usart->usart, ((uint8_t *) buf)[i]);
+        while (!(usart->config->usart->SR & USART_FLAG_TXE));
+        USART_SendData(usart->config->usart, ((uint8_t *) buf)[i]);
     }
     
     return i;
 }
 
-size_t stm32_usart_read(hw_usart_t *usart, uint8_t *buf, size_t len)
+size_t stm32_usart_read(stm32_usart_t *usart, uint8_t *buf, size_t len)
 {
     int i;
     for (i = 0; i < len; i++)
     {
-        while (!(usart->usart->SR & USART_FLAG_RXNE));
-        ((uint8_t *) buf)[i] = USART_ReceiveData(usart->usart);
+        while (!(usart->config->usart->SR & USART_FLAG_RXNE));
+        ((uint8_t *) buf)[i] = USART_ReceiveData(usart->config->usart);
     }
     return i;
 }

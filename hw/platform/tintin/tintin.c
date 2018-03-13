@@ -21,6 +21,7 @@
 #include "stm32_usart.h"
 #include "stm32_power.h"
 #include "stm32_rtc.h"
+#include "stm32_spi.h"
 
 // extern void *strcpy(char *a2, const char *a1);
 
@@ -29,13 +30,49 @@
 static inline void _init_USART3();
 static int _debug_initialized;
 
-const hw_usart_t _usart3 = {
-    USART3, STM32_POWER_APB1, GPIO_AF_USART3, 115200, GPIO_Pin_10, GPIO_Pin_11,
+
+static const stm32_usart_config_t _u3_config = {
+    USART3, FLOW_CONTROL_DISABLED, STM32_POWER_APB1, 10, 11,
     0, 0, /* no flow control */
     GPIOC, RCC_AHB1Periph_GPIOC, RCC_APB1Periph_USART3, 
-    {0} /* no dma */
+    GPIO_AF_USART3
+};
+    
+stm32_usart_t _usart3 = {
+    &_u3_config,
+    NULL,
+    2304400
 };
 
+
+const stm32_spi_config_t _spi2_config = {
+    SPI2, STM32_POWER_APB1, 15, 14, 13,
+    GPIOB, RCC_AHB1Periph_GPIOB, RCC_APB1Periph_SPI2,
+    GPIO_AF_SPI2
+};
+
+static const stm32_dma_t _spi2_dma = {
+    RCC_AHB1Periph_DMA1,
+    DMA1_Stream4,
+    DMA1_Stream3,
+    DMA_Channel_0,
+    DMA_Channel_0,
+    10,
+    9,
+    DMA1_Stream4_IRQn,
+    DMA1_Stream3_IRQn,
+    STM32_DMA_MK_FLAGS(4),
+    STM32_DMA_MK_FLAGS(3),
+    DMA_IT_TCIF4,
+    DMA_IT_TCIF3
+};
+
+stm32_spi_t _spi2 = {
+    &_spi2_config,
+    &_spi2_dma, /* dma */
+};
+
+STM32_SPI_MK_TX_IRQ_HANDLER(&_spi2, 2, 5, _spi_tx_done)
 
 void debug_init() {
     _init_USART3();
@@ -189,13 +226,13 @@ void hw_display_init() {
     gpioinit.GPIO_OType = GPIO_OType_PP;
     gpioinit.GPIO_PuPd = GPIO_PuPd_NOPULL;
     GPIO_Init(GPIOB, &gpioinit);
-
+/*
     gpioinit.GPIO_Pin = (1 << 13) | (1 << 15);
     gpioinit.GPIO_Mode = GPIO_Mode_AF;
     gpioinit.GPIO_Speed = GPIO_Speed_50MHz;
     gpioinit.GPIO_OType = GPIO_OType_PP;
     gpioinit.GPIO_PuPd = GPIO_PuPd_NOPULL;
-    GPIO_Init(GPIOB, &gpioinit);
+    GPIO_Init(GPIOB, &gpioinit);*/
     
     gpioinit.GPIO_Pin = (1 << 1);
     gpioinit.GPIO_Mode = GPIO_Mode_AF;
@@ -205,20 +242,21 @@ void hw_display_init() {
     GPIO_Init(GPIOB, &gpioinit);
 
     /* Set up the SPI controller, SPI2. */
-    SPI_InitTypeDef spiinit;
-    
-    SPI_I2S_DeInit(SPI2);
-    spiinit.SPI_Direction = SPI_Direction_1Line_Tx;
-    spiinit.SPI_Mode = SPI_Mode_Master;
-    spiinit.SPI_DataSize = SPI_DataSize_8b;
-    spiinit.SPI_CPOL = SPI_CPOL_Low;
-    spiinit.SPI_CPHA = SPI_CPHA_1Edge;
-    spiinit.SPI_NSS = SPI_NSS_Soft;
-    spiinit.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;
-    spiinit.SPI_FirstBit = SPI_FirstBit_MSB;
-    spiinit.SPI_CRCPolynomial = 7 /* Um. */;
-    SPI_Init(SPI2, &spiinit);
-    SPI_Cmd(SPI2, ENABLE);
+    stm32_spi_init_device(&_spi2);
+//     SPI_InitTypeDef spiinit;
+//     
+//     SPI_I2S_DeInit(SPI2);
+//     spiinit.SPI_Direction = SPI_Direction_1Line_Tx;
+//     spiinit.SPI_Mode = SPI_Mode_Master;
+//     spiinit.SPI_DataSize = SPI_DataSize_8b;
+//     spiinit.SPI_CPOL = SPI_CPOL_Low;
+//     spiinit.SPI_CPHA = SPI_CPHA_1Edge;
+//     spiinit.SPI_NSS = SPI_NSS_Soft;
+//     spiinit.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;
+//     spiinit.SPI_FirstBit = SPI_FirstBit_MSB;
+//     spiinit.SPI_CRCPolynomial = 7 /* Um. */;
+//     SPI_Init(SPI2, &spiinit);
+//     SPI_Cmd(SPI2, ENABLE);
 
     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);

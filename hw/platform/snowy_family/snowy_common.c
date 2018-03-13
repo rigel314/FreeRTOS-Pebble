@@ -34,11 +34,17 @@ const vibrate_t hw_vibrate_config = {
     .clock   = RCC_AHB1Periph_GPIOF,
 };
 
-const hw_usart_t _usart3 = {
-    USART3, STM32_POWER_APB1, GPIO_AF_USART3, 115200, GPIO_Pin_10, GPIO_Pin_11,
+const stm32_usart_config_t _usart3_config = {
+    USART3, FLOW_CONTROL_DISABLED, STM32_POWER_APB1, 10, 11,
     0, 0, /* no flow control */
-    GPIOC, RCC_AHB1Periph_GPIOC, RCC_APB1Periph_USART3, 
-    {0} /* no dma */
+    GPIOC, RCC_AHB1Periph_GPIOC, RCC_APB1Periph_USART3,
+    GPIO_AF_USART3
+};
+
+stm32_usart_t _usart3 = {
+    &_usart3_config,
+    NULL, /* no dma */
+    2304400
 };
 
 /* 
@@ -116,7 +122,6 @@ void log_clock_disable(void)
 void init_USART3(void)
 {
     stm32_usart_init_device(&_usart3);
-    return;
 }
 
 /*
@@ -140,7 +145,7 @@ void init_USART8(void)
     //GPIO_PinAFConfig(GPIOE, GPIO_PinSource0, GPIO_AF_UART8);
     GPIO_PinAFConfig(GPIOE, GPIO_PinSource1, GPIO_AF_UART8);
 
-    USART_InitStruct.USART_BaudRate = 115200;
+    USART_InitStruct.USART_BaudRate = 230400;
     USART_InitStruct.USART_WordLength = USART_WordLength_8b;
     USART_InitStruct.USART_StopBits = USART_StopBits_1;
     USART_InitStruct.USART_Parity = USART_Parity_No;

@@ -25,11 +25,42 @@ static void _bluetooth_dma_init(void);
 static void _usart1_init(uint32_t baud);
 void do_delay_ms(uint32_t ms);
 
+
+const stm32_usart_config_t _usart1_config = {
+    USART1, FLOW_CONTROL_ENABLED, STM32_POWER_APB2, 10, 9,
+    11, 12, /* flow control */
+    GPIOA, RCC_AHB1Periph_GPIOA, RCC_APB2Periph_USART1,
+    GPIO_AF_USART1
+};
+
+static const stm32_dma_t _usart1_dma = { /* tx: dma stream 7 chan 4, rx: stream 2 chan 4 */
+    RCC_AHB1Periph_DMA2,
+    DMA2_Stream7,
+    DMA2_Stream2,
+    DMA_Channel_4,
+    DMA_Channel_4,
+    8,
+    6,
+    DMA2_Stream7_IRQn,
+    DMA2_Stream2_IRQn,
+    STM32_DMA_MK_FLAGS(7),
+    STM32_DMA_MK_FLAGS(2),
+    DMA_IT_TCIF7,
+    DMA_IT_TCIF2
+};
+
+stm32_usart_t _usart1 = {
+    &_usart1_config,
+    &_usart1_dma, /* dma */
+    2304400
+};
+
+/*
 static hw_usart_t _usart1 = {
-    USART1, STM32_POWER_APB1, GPIO_AF_USART1, 115200, GPIO_Pin_10, GPIO_Pin_9,
-    GPIO_Pin_11, GPIO_Pin_12, /* flow control */
+    USART1, 1, STM32_POWER_APB1, 115200, 10, 9,
+    11, 12,
     GPIOA, RCC_AHB1Periph_GPIOA, RCC_APB2Periph_USART1, 
-    { /* tx: dma stream 7 chan 4, rx: stream 2 chan 4 */
+    { //tx: dma stream 7 chan 4, rx: stream 2 chan 4 
         RCC_AHB1Periph_DMA2,
         DMA2_Stream7,
         DMA2_Stream2,
@@ -44,16 +75,17 @@ static hw_usart_t _usart1 = {
         DMA_IT_TCIF7,
         DMA_IT_TCIF2
     } 
-};
+};*/
 
-STM32_USART_MK_TX_IRQ_HANDLER(&_usart1, 7, bt_stack_tx_done)
-STM32_USART_MK_RX_IRQ_HANDLER(&_usart1, 2, bt_stack_rx_done)
+STM32_USART_MK_TX_IRQ_HANDLER(&_usart1, 2, 7, bt_stack_tx_done)
+STM32_USART_MK_RX_IRQ_HANDLER(&_usart1, 2, 2, bt_stack_rx_done)
 
 uint8_t hw_bluetooth_init(void)
 {
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
     /* B12: The Bluetooth nSHUTD pin "shutdown"
      * Data is driver user USART1
      * The 32.768Khz "slow clock" is taken from the
@@ -294,7 +326,7 @@ void hw_bluetooth_disable_cts_irq(void)
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
 }
 
-hw_usart_t *hw_bluetooth_get_usart(void)
+stm32_usart_t *hw_bluetooth_get_usart(void)
 {
     return &_usart1;
 }
