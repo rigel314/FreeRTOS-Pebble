@@ -57,9 +57,18 @@ void stm32_dma_init_device(stm32_dma_t *dma)
     stm32_power_release(STM32_POWER_AHB1, dma->dma_clock);
 }
 
-
 /*
- * Request transmission of the buffer provider
+ * The TX and RX process is broken into 3 parts
+ * reset, init and begin.
+ * The specific hardware driver that implements this will need
+ * to inject their own peripheral dma commands between these stages.
+ * The driver can then wrap a full TX or RX request 
+ * (see stm32_usart for an example)
+ * 
+ * NOTE: It is imperitive the driver using DMA turns on the clock
+ */
+/*
+ * Reset the DMA channel and wait for completion
  */
 void stm32_dma_tx_reset(stm32_dma_t *dma)
 {
@@ -70,6 +79,10 @@ void stm32_dma_tx_reset(stm32_dma_t *dma)
     while (dma->dma_tx_stream->CR & DMA_SxCR_EN);
 }
 
+/*
+ * Initialise the DMA channel, and set the data pointers
+ * NOTE: This will not send data yet
+ */
 void stm32_dma_tx_init(stm32_dma_t *dma, void *periph_address, uint32_t *data, uint32_t len)
 {
     DMA_InitTypeDef dma_init_struct;
@@ -101,11 +114,17 @@ void stm32_dma_tx_init(stm32_dma_t *dma, void *periph_address, uint32_t *data, u
     DMA_Cmd(dma->dma_tx_stream, ENABLE);
 }
 
+/*
+ * Begin the TX over DMA
+ */
 void stm32_dma_tx_begin(stm32_dma_t *dma)
 {
     DMA_ITConfig(dma->dma_tx_stream, DMA_IT_TC, ENABLE);
 }
 
+/*
+ * Reset the RX DMA channel and wait for completion
+ */
 void stm32_dma_rx_reset(stm32_dma_t *dma)
 {
     /* XXX released in IRQ */
@@ -116,7 +135,8 @@ void stm32_dma_rx_reset(stm32_dma_t *dma)
 }
 
 /*
- * 
+ * Initialise the DMA channel for RX, and set the data pointers
+ * NOTE: This will not receive data yet
  */
 void stm32_dma_rx_init(stm32_dma_t *dma, void *periph_addr, uint32_t *data, size_t len)
 {
@@ -141,6 +161,9 @@ void stm32_dma_rx_init(stm32_dma_t *dma, void *periph_addr, uint32_t *data, size
     DMA_Cmd(dma->dma_rx_stream, ENABLE);
 }
 
+/*
+ * Begin the RX DMA transfer
+ */
 void stm32_dma_rx_begin(stm32_dma_t *dma)
 {
     /* XXX released in IRQ */
@@ -148,7 +171,9 @@ void stm32_dma_rx_begin(stm32_dma_t *dma)
 }
 
 /*
- * IRQ Handler for RX of data complete
+ * IRQ Handler for RX of data complete.
+ * The actual IRQ handler is constructed by the implementation 
+ * using a MK_XXX_ wrapper.
  */
 void stm32_dma_rx_isr(stm32_dma_t *dma)
 {
@@ -178,6 +203,6 @@ void stm32_dma_tx_isr(stm32_dma_t *dma)
     }
     else
     {
-        DRV_LOG("dma", APP_LOG_LEVEL_ERROR, "DMA TX ERROR TEIF");
+//         DRV_LOG("dma", APP_LOG_LEVEL_ERROR, "DMA TX ERROR TEIF");
     }
 }

@@ -4,7 +4,6 @@
  *
  * Author: Barry Carter <barry.carter@gmail.com>
  */
-
 #if defined(STM32F4XX)
 #    include "stm32f4xx.h"
 #elif defined(STM32F2XX)
@@ -38,11 +37,7 @@ void stm32_spi_init_device(stm32_spi_t *spi)
 
 
 /*
- * Intialise the USART used for bluetooth
- * 
- * baud: How fast do you want to go. 
- * 0 does not mean any special. 
- * Please use a baud rate apprpriate for the clock
+ * Intialise the SPI Peripheral
  */
 static void _spi_init(stm32_spi_config_t *spi)
 {
@@ -52,36 +47,58 @@ static void _spi_init(stm32_spi_config_t *spi)
     /* enable clock for used IO pins */
     stm32_power_request(STM32_POWER_AHB1, spi->gpio_clock);
 
-    gpio_init_struct.GPIO_Pin = (1 << spi->gpio_pin_miso_num)  | 
-                                (1 << spi->gpio_pin_mosi_num) | 
-                                (1 << spi->gpio_pin_sck_num);
+    gpio_init_struct.GPIO_Pin = (1 << spi->gpio_pin_sck_num);
     gpio_init_struct.GPIO_Mode = GPIO_Mode_AF;
     gpio_init_struct.GPIO_OType = GPIO_OType_PP;
     gpio_init_struct.GPIO_Speed = GPIO_Speed_100MHz;
     gpio_init_struct.GPIO_PuPd = GPIO_PuPd_NOPULL;
-    GPIO_Init(spi->gpio_ptr, &gpio_init_struct);
-
-    /* connect SPI pins to SPI alternate function */
-    GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_miso_num, spi->af);
-    GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_mosi_num, spi->af);
-    GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_sck_num, spi->af);
-
-    stm32_power_release(STM32_POWER_AHB1, spi->gpio_clock);
+    
 
     /* enable peripheral clock */
     stm32_power_request(spi->spi_periph_bus, spi->spi_clock);
 
-    spi_init_struct.SPI_Direction = SPI_Direction_2Lines_FullDuplex; // set to full duplex mode, seperate MOSI and MISO lines
+    switch(spi->txrx_dir) {
+        case STM32_SPI_DIR_RX:
+            spi_init_struct.SPI_Direction = SPI_Direction_1Line_Rx; // RX Only. One line
+
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_miso_num, spi->af);
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_sck_num, spi->af);
+            gpio_init_struct.GPIO_Pin |= (1 << spi->gpio_pin_miso_num);
+            break;
+        case STM32_SPI_DIR_TX:
+            spi_init_struct.SPI_Direction = SPI_Direction_1Line_Tx; // TX Only. One line
+            
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_mosi_num, spi->af);
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_sck_num, spi->af);
+            gpio_init_struct.GPIO_Pin |= (1 << spi->gpio_pin_mosi_num);
+            break;
+        case STM32_SPI_DIR_RXTX:
+            spi_init_struct.SPI_Direction = SPI_Direction_2Lines_FullDuplex; // set to full duplex mode, seperate MOSI and MISO lines
+            
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_miso_num, spi->af);
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_mosi_num, spi->af);
+            GPIO_PinAFConfig(spi->gpio_ptr, spi->gpio_pin_sck_num, spi->af);
+            gpio_init_struct.GPIO_Pin |= (1 << spi->gpio_pin_miso_num);
+            gpio_init_struct.GPIO_Pin |= (1 << spi->gpio_pin_mosi_num);
+            break;
+        default:
+            spi_init_struct.SPI_Direction = SPI_Direction_2Lines_FullDuplex; // set to full duplex mode, seperate MOSI and MISO lines
+    }
+    
+    GPIO_Init(spi->gpio_ptr, &gpio_init_struct);
+
+    stm32_power_release(STM32_POWER_AHB1, spi->gpio_clock);
+    
     spi_init_struct.SPI_Mode = SPI_Mode_Master;     // transmit in master mode, NSS pin has to be always high
     spi_init_struct.SPI_DataSize = SPI_DataSize_8b; // one packet of data is 8 bits wide
-    spi_init_struct.SPI_CPOL = SPI_CPOL_High;        // clock is low when idle
+    spi_init_struct.SPI_CPOL = spi->line_polarity;        // clock is low when idle
     spi_init_struct.SPI_CPHA = SPI_CPHA_1Edge;      // data sampled at first edge
-    spi_init_struct.SPI_NSS = SPI_NSS_Soft | SPI_NSSInternalSoft_Set; // set the NSS management to internal and pull internal NSS high
+    spi_init_struct.SPI_NSS = SPI_NSS_Soft;// | SPI_NSSInternalSoft_Set; // set the NSS management to internal and pull internal NSS high
     spi_init_struct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8; // SPI frequency is APB2 frequency / 8
     spi_init_struct.SPI_FirstBit = SPI_FirstBit_MSB;// data is transmitted LSB first
     
     /* any CRC poly? */
-
+    spi_init_struct.SPI_CRCPolynomial = spi->crc_poly;
     SPI_Init(spi->spi, &spi_init_struct); 
 
     SPI_Cmd(spi->spi, ENABLE);
@@ -149,6 +166,7 @@ void stm32_spi_rx_isr(stm32_spi_t *spi, dma_callback callback)
     
     /* Trigger the recipient interrupt handler */
     callback();
+    
     stm32_power_release(STM32_POWER_AHB1, spi->dma->dma_clock);
 }
 
@@ -166,4 +184,12 @@ void stm32_spi_tx_isr(stm32_spi_t *spi, dma_callback callback)
     callback();
     
     stm32_power_release(STM32_POWER_AHB1, spi->dma->dma_clock);
+}
+
+
+void stm32_spi_write(stm32_spi_t *spi, unsigned char c)
+{
+    spi->config->spi->DR = c;
+    while (!(spi->config->spi->SR & SPI_SR_TXE))
+        ;
 }

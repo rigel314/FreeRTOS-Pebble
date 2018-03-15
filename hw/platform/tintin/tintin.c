@@ -32,47 +32,62 @@ static int _debug_initialized;
 
 
 static const stm32_usart_config_t _u3_config = {
-    USART3, FLOW_CONTROL_DISABLED, STM32_POWER_APB1, 10, 11,
-    0, 0, /* no flow control */
-    GPIOC, RCC_AHB1Periph_GPIOC, RCC_APB1Periph_USART3, 
-    GPIO_AF_USART3
+    .usart                = USART3,
+    .flow_control_enabled = FLOW_CONTROL_DISABLED,
+    .usart_periph_bus     = STM32_POWER_APB1,
+    .gpio_pin_tx_num      = 10,
+    .gpio_pin_rx_num      = 11,
+    .gpio_pin_rts_num     = 0,
+    .gpio_pin_cts_num     = 0,
+    .gpio_ptr             = GPIOC,
+    .gpio_clock           = RCC_AHB1Periph_GPIOC,
+    .usart_clock          = RCC_APB1Periph_USART3,
+    .af                   = GPIO_AF_USART3,
 };
-    
-stm32_usart_t _usart3 = {
+
+static stm32_usart_t _usart3 = {
     &_u3_config,
     NULL,
-    2304400
+    230400
 };
 
 
-const stm32_spi_config_t _spi2_config = {
-    SPI2, STM32_POWER_APB1, 15, 14, 13,
-    GPIOB, RCC_AHB1Periph_GPIOB, RCC_APB1Periph_SPI2,
-    GPIO_AF_SPI2
+static const stm32_spi_config_t _spi2_config = {
+    .spi                  = SPI2,
+    .spi_periph_bus       = STM32_POWER_APB1,
+    .gpio_pin_miso_num    = 0,
+    .gpio_pin_mosi_num    = 15,
+    .gpio_pin_sck_num     = 13,
+    .gpio_ptr             = GPIOB,
+    .gpio_clock           = RCC_AHB1Periph_GPIOB,
+    .spi_clock            = RCC_APB1Periph_SPI2,
+    .af                   = GPIO_AF_SPI2,
+    .txrx_dir             = STM32_SPI_DIR_TX,
+    .crc_poly             = 7 /* Um */
 };
 
 static const stm32_dma_t _spi2_dma = {
-    RCC_AHB1Periph_DMA1,
-    DMA1_Stream4,
-    DMA1_Stream3,
-    DMA_Channel_0,
-    DMA_Channel_0,
-    10,
-    9,
-    DMA1_Stream4_IRQn,
-    DMA1_Stream3_IRQn,
-    STM32_DMA_MK_FLAGS(4),
-    STM32_DMA_MK_FLAGS(3),
-    DMA_IT_TCIF4,
-    DMA_IT_TCIF3
+    .dma_clock            = RCC_AHB1Periph_DMA1,
+    .dma_tx_stream        = DMA1_Stream4,
+    .dma_rx_stream        = DMA1_Stream3,
+    .dma_tx_channel       = DMA_Channel_0,
+    .dma_rx_channel       = DMA_Channel_0,
+    .dma_irq_tx_pri       = 10,
+    .dma_irq_rx_pri       = 9,
+    .dma_irq_tx_channel   = DMA1_Stream4_IRQn,
+    .dma_irq_rx_channel   = DMA1_Stream3_IRQn,
+    .dma_tx_channel_flags = STM32_DMA_MK_FLAGS(4),
+    .dma_rx_channel_flags = STM32_DMA_MK_FLAGS(3),
+    .dma_tx_irq_flag      = DMA_IT_TCIF4,
+    .dma_rx_irq_flag      = DMA_IT_TCIF3
 };
 
-stm32_spi_t _spi2 = {
+static stm32_spi_t _spi2 = {
     &_spi2_config,
     &_spi2_dma, /* dma */
 };
 
-STM32_SPI_MK_TX_IRQ_HANDLER(&_spi2, 2, 5, _spi_tx_done)
+//STM32_SPI_MK_TX_IRQ_HANDLER(&_spi2, 2, 5, _spi_tx_done)
 
 void debug_init() {
     _init_USART3();
@@ -94,8 +109,9 @@ void debug_write(const unsigned char *p, size_t len) {
  */
 static inline void _init_USART3(void)
 {
-    stm32_usart_init_device(&_usart3);
-    
+    /* leave the usart clock on */
+    stm32_power_request(_usart3.config->usart_periph_bus, _usart3.config->usart_clock);
+    stm32_usart_init_device(&_usart3);    
 }
 
 /*** platform ***/
@@ -209,15 +225,12 @@ static uint8_t _display_fb[168][20];
 void hw_display_init() {
     printf("tintin: hw_display_init\n");
 
-    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOC);
 
     GPIO_WriteBit(GPIOB, 1 << 12, 0);
     GPIO_PinAFConfig(GPIOB, 1, GPIO_AF_TIM3);
-    GPIO_PinAFConfig(GPIOB, 13, GPIO_AF_SPI2);
-    GPIO_PinAFConfig(GPIOB, 15, GPIO_AF_SPI2);
-
+   
     GPIO_InitTypeDef gpioinit;
     
     gpioinit.GPIO_Pin = (1 << 12);
@@ -226,13 +239,6 @@ void hw_display_init() {
     gpioinit.GPIO_OType = GPIO_OType_PP;
     gpioinit.GPIO_PuPd = GPIO_PuPd_NOPULL;
     GPIO_Init(GPIOB, &gpioinit);
-/*
-    gpioinit.GPIO_Pin = (1 << 13) | (1 << 15);
-    gpioinit.GPIO_Mode = GPIO_Mode_AF;
-    gpioinit.GPIO_Speed = GPIO_Speed_50MHz;
-    gpioinit.GPIO_OType = GPIO_OType_PP;
-    gpioinit.GPIO_PuPd = GPIO_PuPd_NOPULL;
-    GPIO_Init(GPIOB, &gpioinit);*/
     
     gpioinit.GPIO_Pin = (1 << 1);
     gpioinit.GPIO_Mode = GPIO_Mode_AF;
@@ -243,22 +249,7 @@ void hw_display_init() {
 
     /* Set up the SPI controller, SPI2. */
     stm32_spi_init_device(&_spi2);
-//     SPI_InitTypeDef spiinit;
-//     
-//     SPI_I2S_DeInit(SPI2);
-//     spiinit.SPI_Direction = SPI_Direction_1Line_Tx;
-//     spiinit.SPI_Mode = SPI_Mode_Master;
-//     spiinit.SPI_DataSize = SPI_DataSize_8b;
-//     spiinit.SPI_CPOL = SPI_CPOL_Low;
-//     spiinit.SPI_CPHA = SPI_CPHA_1Edge;
-//     spiinit.SPI_NSS = SPI_NSS_Soft;
-//     spiinit.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;
-//     spiinit.SPI_FirstBit = SPI_FirstBit_MSB;
-//     spiinit.SPI_CRCPolynomial = 7 /* Um. */;
-//     SPI_Init(SPI2, &spiinit);
-//     SPI_Cmd(SPI2, ENABLE);
-
-    stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
+    
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOC);
 }
@@ -271,12 +262,6 @@ void hw_display_start() {
     printf("tintin: hw_display_start\n");
 }
 
-static void _display_write(unsigned char c) {
-    SPI2->DR = c;
-    while (!(SPI2->SR & SPI_SR_TXE))
-        ;
-}
-
 void hw_display_start_frame(uint8_t x, uint8_t y) {
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
@@ -284,14 +269,14 @@ void hw_display_start_frame(uint8_t x, uint8_t y) {
     printf("tintin: here we go, slowly blitting %d %d\n", x, y);
     GPIO_WriteBit(GPIOB, 1 << 12, 1);
     delay_us(7);
-    _display_write(0x80);
+    stm32_spi_write(&_spi2, 0x80);
     for (int i = 0; i < 168; i++) {
-        _display_write(__RBIT(__REV(168-i)));
+        stm32_spi_write(&_spi2, __RBIT(__REV(168-i)));
         for (int j = 0; j < 18; j++)
-            _display_write(_display_fb[i][17-j]);
-        _display_write(0);
+            stm32_spi_write(&_spi2, _display_fb[i][17-j]);
+        stm32_spi_write(&_spi2, 0);
     }
-    _display_write(0);
+    stm32_spi_write(&_spi2, 0);
     delay_us(7);
     GPIO_WriteBit(GPIOB, 1 << 12, 0);
 

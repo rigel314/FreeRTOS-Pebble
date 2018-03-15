@@ -34,17 +34,24 @@ const vibrate_t hw_vibrate_config = {
     .clock   = RCC_AHB1Periph_GPIOF,
 };
 
-const stm32_usart_config_t _usart3_config = {
-    USART3, FLOW_CONTROL_DISABLED, STM32_POWER_APB1, 10, 11,
-    0, 0, /* no flow control */
-    GPIOC, RCC_AHB1Periph_GPIOC, RCC_APB1Periph_USART3,
-    GPIO_AF_USART3
+static const stm32_usart_config_t _usart3_config = {
+    .usart                = USART3,
+    .flow_control_enabled = FLOW_CONTROL_DISABLED,
+    .usart_periph_bus     = STM32_POWER_APB1,
+    .gpio_pin_tx_num      = 10,
+    .gpio_pin_rx_num      = 11,
+    .gpio_pin_rts_num     = 0,
+    .gpio_pin_cts_num     = 0,
+    .gpio_ptr             = GPIOC,
+    .gpio_clock           = RCC_AHB1Periph_GPIOC,
+    .usart_clock          = RCC_APB1Periph_USART3,
+    .af                   = GPIO_AF_USART3,
 };
 
-stm32_usart_t _usart3 = {
+static stm32_usart_t _usart3 = {
     &_usart3_config,
     NULL, /* no dma */
-    2304400
+    230400
 };
 
 /* 

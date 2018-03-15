@@ -22,6 +22,10 @@
 #include <stdint.h>
 #include "stm32_dma.h"
 
+#define STM32_SPI_DIR_RXTX 0
+#define STM32_SPI_DIR_RX   1
+#define STM32_SPI_DIR_TX   2
+
 const typedef struct {
     SPI_TypeDef *spi;
     uint32_t spi_periph_bus;
@@ -32,6 +36,9 @@ const typedef struct {
     uint32_t gpio_clock;
     uint32_t spi_clock;
     uint32_t af;
+    uint8_t txrx_dir;
+    uint16_t crc_poly;
+    uint8_t line_polarity;
 } stm32_spi_config_t;
 
 
@@ -61,6 +68,7 @@ static inline void _stm32_spi_rx_isr(void);
 void stm32_spi_init_device(stm32_spi_t *spi);
 void stm32_spi_send_dma(stm32_spi_t *spi, uint32_t *data, size_t len);
 void stm32_spi_recv_dma(stm32_spi_t *spi, uint32_t *data, size_t len);
+void stm32_spi_write(stm32_spi_t *spi, unsigned char c);
 
 void stm32_spi_rx_isr(stm32_spi_t *spi, dma_callback callback);
 void stm32_spi_tx_isr(stm32_spi_t *spi, dma_callback callback);

@@ -23,60 +23,44 @@
 static void _bt_reset_hci_dma(void);
 static void _bluetooth_dma_init(void);
 static void _usart1_init(uint32_t baud);
-void do_delay_ms(uint32_t ms);
 
-
-const stm32_usart_config_t _usart1_config = {
-    USART1, FLOW_CONTROL_ENABLED, STM32_POWER_APB2, 10, 9,
-    11, 12, /* flow control */
-    GPIOA, RCC_AHB1Periph_GPIOA, RCC_APB2Periph_USART1,
-    GPIO_AF_USART1
+static const stm32_usart_config_t _usart1_config = {
+    .usart                = USART1,
+    .flow_control_enabled = FLOW_CONTROL_ENABLED,
+    .usart_periph_bus     = STM32_POWER_APB2,
+    .gpio_pin_tx_num      = 10,
+    .gpio_pin_rx_num      = 9,
+    .gpio_pin_rts_num     = 11,
+    .gpio_pin_cts_num     = 12,
+    .gpio_ptr             = GPIOA,
+    .gpio_clock           = RCC_AHB1Periph_GPIOA,
+    .usart_clock          = RCC_APB2Periph_USART1,
+    .af                   = GPIO_AF_USART1,
 };
 
 static const stm32_dma_t _usart1_dma = { /* tx: dma stream 7 chan 4, rx: stream 2 chan 4 */
-    RCC_AHB1Periph_DMA2,
-    DMA2_Stream7,
-    DMA2_Stream2,
-    DMA_Channel_4,
-    DMA_Channel_4,
-    8,
-    6,
-    DMA2_Stream7_IRQn,
-    DMA2_Stream2_IRQn,
-    STM32_DMA_MK_FLAGS(7),
-    STM32_DMA_MK_FLAGS(2),
-    DMA_IT_TCIF7,
-    DMA_IT_TCIF2
+    .dma_clock            = RCC_AHB1Periph_DMA2,
+    .dma_tx_stream        = DMA2_Stream7,
+    .dma_rx_stream        = DMA2_Stream2,
+    .dma_tx_channel       = DMA_Channel_4,
+    .dma_rx_channel       = DMA_Channel_4,
+    .dma_irq_tx_pri       = 8,
+    .dma_irq_rx_pri       = 6,
+    .dma_irq_tx_channel   = DMA2_Stream7_IRQn,
+    .dma_irq_rx_channel   = DMA2_Stream2_IRQn,
+    .dma_tx_channel_flags = STM32_DMA_MK_FLAGS(7),
+    .dma_rx_channel_flags = STM32_DMA_MK_FLAGS(2),
+    .dma_tx_irq_flag      = DMA_IT_TCIF7,
+    .dma_rx_irq_flag      = DMA_IT_TCIF2
 };
 
-stm32_usart_t _usart1 = {
+static stm32_usart_t _usart1 = {
     &_usart1_config,
     &_usart1_dma, /* dma */
-    2304400
+    115200 /* initial slow handshake */
 };
 
-/*
-static hw_usart_t _usart1 = {
-    USART1, 1, STM32_POWER_APB1, 115200, 10, 9,
-    11, 12,
-    GPIOA, RCC_AHB1Periph_GPIOA, RCC_APB2Periph_USART1, 
-    { //tx: dma stream 7 chan 4, rx: stream 2 chan 4 
-        RCC_AHB1Periph_DMA2,
-        DMA2_Stream7,
-        DMA2_Stream2,
-        DMA_Channel_4,
-        DMA_Channel_4,
-        8,
-        6,
-        DMA2_Stream7_IRQn,
-        DMA2_Stream2_IRQn,
-        STM32_USART_MK_DMA_FLAGS(7),
-        STM32_USART_MK_DMA_FLAGS(2),
-        DMA_IT_TCIF7,
-        DMA_IT_TCIF2
-    } 
-};*/
-
+/* DMA 2 stream 7 */
 STM32_USART_MK_TX_IRQ_HANDLER(&_usart1, 2, 7, bt_stack_tx_done)
 STM32_USART_MK_RX_IRQ_HANDLER(&_usart1, 2, 2, bt_stack_rx_done)
 
@@ -121,9 +105,10 @@ uint8_t hw_bluetooth_init(void)
     GPIO_PinAFConfig(GPIOA, GPIO_PinSource8, GPIO_AF_MCO);
    
     /* configure DMA and set initial speed */
-//     _usart1_init(115200);
-//     _bluetooth_dma_init();
     stm32_usart_init_device(&_usart1);
+    
+    /* I'm going to request the usart stay on for now pending bluetooth */
+    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_USART1);
 
     hw_bluetooth_clock_on();
 
@@ -173,7 +158,7 @@ void hw_bluetooth_clock_on(void)
         
     /* datasheet says no more than 2ms for clock stabilisation. 
      * Lets go for more */
-    do_delay_ms(5);
+    delay_ms(5);
     IWDG_ReloadCounter();
     
     DRV_LOG("BT", APP_LOG_LEVEL_DEBUG, "BT: Power ON!");
@@ -207,10 +192,10 @@ uint8_t hw_bluetooth_power_cycle(void)
 
     /* B12 nSHUTD LOW then HIGH (enable) */
     GPIO_ResetBits(GPIOB, BT_SHUTD);
-    do_delay_ms(20);    
+    delay_ms(20);    
     GPIO_SetBits(GPIOB, BT_SHUTD);
     /* datasheet says at least 90ms to init */
-    do_delay_ms(90);
+    delay_ms(90);
     
     /* but lets sit and wait for the device to come up */
     for(int i = 0; i < 10000; i++)
@@ -224,7 +209,7 @@ uint8_t hw_bluetooth_power_cycle(void)
             stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_PWR);
             return 0;
         }
-        do_delay_ms(1);
+        delay_ms(1);
     }
 
 /*     assert(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_11) == 0 && "BT Reset Failed");*/
@@ -331,11 +316,3 @@ stm32_usart_t *hw_bluetooth_get_usart(void)
     return &_usart1;
 }
 
-
-/* Do delay for nTime milliseconds 
- * NOT safe unless scheduler is running
- */
-void do_delay_ms(uint32_t ms) {
-    vTaskDelay(pdMS_TO_TICKS(ms));
-    return;   
-}

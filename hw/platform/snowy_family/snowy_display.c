@@ -46,6 +46,7 @@ void _snowy_display_init_intn(void);
 void _snowy_display_dma_send(uint8_t *data, uint32_t len);
 void _snowy_display_next_column(uint8_t col_index);
 void _snowy_display_init_dma(void);
+static void _spi_tx_done(void);
 
 // pointer to the place in flash where the FPGA image resides
 // extern unsigned char fpga_address; // _binary_Resources_FPGA_4_3_snowy_dumped_bin_start;
@@ -88,29 +89,37 @@ CCRAM display_t display = {
 };
 
 
-const stm32_spi_config_t _spi6_config = {
-    SPI6, STM32_POWER_APB2, 12, 14, 13,
-    GPIOG, RCC_AHB1Periph_GPIOG, RCC_APB2Periph_SPI6,
-    GPIO_AF_SPI6
+static const stm32_spi_config_t _spi6_config = {
+    .spi               = SPI6,
+    .spi_periph_bus    = STM32_POWER_APB2,
+    .gpio_pin_miso_num = 12,
+    .gpio_pin_mosi_num = 14,
+    .gpio_pin_sck_num  = 13,
+    .gpio_ptr          = GPIOG,
+    .gpio_clock        = RCC_AHB1Periph_GPIOG,
+    .spi_clock         = RCC_APB2Periph_SPI6,
+    .af                = GPIO_AF_SPI6,
+    .crc_poly          = 7,
+    .line_polarity     = SPI_CPOL_High
 };
 
 static const stm32_dma_t _spi6_dma = {
-    RCC_AHB1Periph_DMA2,
-    DMA2_Stream5,
-    DMA2_Stream6,
-    DMA_Channel_1,
-    DMA_Channel_0,
-    9,
-    9,
-    DMA2_Stream5_IRQn,
-    DMA2_Stream6_IRQn,
-    STM32_DMA_MK_FLAGS(5),
-    STM32_DMA_MK_FLAGS(6),
-    DMA_IT_TCIF5,
-    DMA_IT_TCIF6
+    .dma_clock            = RCC_AHB1Periph_DMA2,
+    .dma_tx_stream        = DMA2_Stream5,
+    .dma_rx_stream        = DMA2_Stream6,
+    .dma_tx_channel       = DMA_Channel_1,
+    .dma_rx_channel       = DMA_Channel_0,
+    .dma_irq_tx_pri       = 9,
+    .dma_irq_rx_pri       = 9,
+    .dma_irq_tx_channel   = DMA2_Stream5_IRQn,
+    .dma_irq_rx_channel   = DMA2_Stream6_IRQn,
+    .dma_tx_channel_flags = STM32_DMA_MK_FLAGS(5),
+    .dma_rx_channel_flags = STM32_DMA_MK_FLAGS(6),
+    .dma_tx_irq_flag      = DMA_IT_TCIF5,
+    .dma_rx_irq_flag      = DMA_IT_TCIF6,
 };
 
-stm32_spi_t _spi6 = {
+static stm32_spi_t _spi6 = {
     &_spi6_config,
     &_spi6_dma, /* dma */
 };
@@ -119,7 +128,6 @@ void _spi_tx_done(void);
 
 // SPI6 	DMA2 	DMA Stream 5 	DMA Channel 1 	DMA Stream 6 	DMA Channel 0
 STM32_SPI_MK_TX_IRQ_HANDLER(&_spi6, 2, 5, _spi_tx_done)
-// STM32_SPI_MK_RX_IRQ_HANDLER(&_spi6, 6, bt_stack_rx_done)
 
 /*
  * Initialise the hardware. This means all GPIOs and SPI for the display
@@ -247,7 +255,7 @@ void snowy_display_reinit_dma(uint32_t *data, uint32_t length)
 /*
  * DMA2 handler for SPI6
  */
-void _spi_tx_done(void)
+static void _spi_tx_done(void)
 {
     static uint8_t col_index = 0;
 
@@ -378,11 +386,11 @@ uint8_t _snowy_display_FPGA_reset(uint8_t mode)
 
     // Pull out reset
     _snowy_display_cs(mode);
-    delay_ms(1);
+    delay_large(1);
     _snowy_display_reset(0);
     _snowy_display_cs(1);
 
-    delay_ms(1);
+    delay_large(1);
     
     _snowy_display_reset(1);
     delay_us(1);
@@ -572,10 +580,10 @@ void _snowy_display_full_init(void)
     }
     
     // get the splashscreen resource handle and read it directly into the framebuffer
-    ResHandle resource_handle = resource_get_handle_system(SPLASH_RESOURCE_ID);
-    hw_flash_read_bytes(REGION_RES_START + RES_START + resource_handle.offset, display.frame_buffer, resource_handle.size);
-    // send raw splashscreen image to display
-    _snowy_display_send_frame_slow();
+//     ResHandle resource_handle = resource_get_handle_system(SPLASH_RESOURCE_ID);
+//     hw_flash_read_bytes(REGION_RES_START + RES_START + resource_handle.offset, display.frame_buffer, resource_handle.size);
+//     // send raw splashscreen image to display
+//     _snowy_display_send_frame_slow();
 
     // enable interrupts now we have the splash up
     // Interrupt handler is in with bluetooth :/
@@ -666,7 +674,7 @@ void delay_us(uint16_t us)
             ;;
 }
 
-void delay_ms(uint16_t ms)
+void delay_large(uint16_t ms)
 {
     delay_us(1000 * ms);
 }

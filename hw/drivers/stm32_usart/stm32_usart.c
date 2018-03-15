@@ -4,7 +4,6 @@
  *
  * Author: Barry Carter <barry.carter@gmail.com>
  */
-
 #if defined(STM32F4XX)
 #    include "stm32f4xx.h"
 #elif defined(STM32F2XX)
@@ -31,8 +30,6 @@ void hw_usart_init(void)
 
 #define USART_FLOW_CONTROL_DISABLED 0
 #define USART_FLOW_CONTROL_ENABLED  1
-#define USART_DMA_DISABLED 0
-#define USART_DMA_ENABLED  1
 
 static void _usart_init(stm32_usart_t *usart);
 
@@ -68,19 +65,16 @@ static void _usart_init(stm32_usart_t *usart)
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(u->gpio_ptr, &GPIO_InitStruct);
     
     if (u->flow_control_enabled)
     {
         /* Enable AF on CTS & RTS */
         GPIO_InitStruct.GPIO_Pin = (1 << u->gpio_pin_cts_num) | 
                                    (1 << u->gpio_pin_rts_num);
-        GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
-        GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
-        GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+
         GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
-        GPIO_Init(usart->config->gpio_ptr, &GPIO_InitStruct);
     }
+    GPIO_Init(usart->config->gpio_ptr, &GPIO_InitStruct);
     
     USART_DeInit(u->usart);
     USART_StructInit(&USART_InitStruct);
@@ -104,11 +98,17 @@ static void _usart_init(stm32_usart_t *usart)
         
         USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_RTS_CTS;
     }
+    else
+    {
+        USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+    }
+    
     USART_Init(u->usart, &USART_InitStruct);
     
+    /* USART is ready to go */
     USART_Cmd(u->usart, ENABLE);
     
-//     stm32_power_release(STM32_POWER_APB2, usart->usart_clock);
+    stm32_power_release(u->usart_periph_bus, usart->config->usart_clock);
     stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
 }
 
@@ -127,7 +127,7 @@ void stm32_usart_send_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
     /* Turn off the USART DMA for initialisation */
     USART_DMACmd(usart->config->usart, USART_DMAReq_Tx, DISABLE);
     /* ready for DMA */
-    stm32_dma_tx_init(usart->dma, &usart->config->usart->DR, data, len);
+    stm32_dma_tx_init(usart->dma, (volatile)&usart->config->usart->DR, data, len);
     
     /* Turn on our USART and then the USART DMA */
     USART_Cmd(usart->config->usart, ENABLE);
@@ -138,7 +138,7 @@ void stm32_usart_send_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
 }
 
 /*
- * Some data arrived from the bluetooth stack
+ * Ready the USART for DMA RX transfer
  */
 void stm32_usart_recv_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
 {
@@ -146,6 +146,7 @@ void stm32_usart_recv_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
 
     stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
     stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
+    /* we have to control the DMA clock */
     stm32_power_request(STM32_POWER_AHB1, usart->dma->dma_clock);
 
     /* reset the DMA controller ready for rx */
@@ -165,20 +166,8 @@ void stm32_usart_recv_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
  */
 void stm32_usart_set_baud(stm32_usart_t *usart, uint32_t baud)
 {
-    /* we don't want to go through init or set baud in the struct */
-    /* just update it */
-    GPIO_InitTypeDef GPIO_InitStruct;
-    USART_InitTypeDef USART_InitStruct;
-
-    stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
-    stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
-    
-    USART_InitStruct.USART_BaudRate = baud;
-    USART_Init(usart->config->usart, &USART_InitStruct);    
-    USART_Cmd(usart->config->usart, ENABLE);
-    
-    stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
-    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
+    _usart_init(usart);
+    usart->baud = baud;
 }
 
 /*
@@ -206,7 +195,7 @@ void stm32_usart_tx_isr(stm32_usart_t *usart, dma_callback callback)
 
     stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
     stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
-DRV_LOG("dma", APP_LOG_LEVEL_ERROR, "DMA TX ERROR TEIF");
+
     /* Trigger the stack's interrupt handler */
     callback();
     stm32_power_release(STM32_POWER_AHB1, usart->dma->dma_clock);
@@ -216,6 +205,9 @@ DRV_LOG("dma", APP_LOG_LEVEL_ERROR, "DMA TX ERROR TEIF");
 /* Util function to directly read and write the USART */
 size_t stm32_usart_write(stm32_usart_t *usart, const uint8_t *buf, size_t len)
 {
+    stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
+
     /* From tintin. Checks TC not TXE
         for (i = 0; i < len; i++) {
         if (p[i] == '\n') {
@@ -231,12 +223,14 @@ size_t stm32_usart_write(stm32_usart_t *usart, const uint8_t *buf, size_t len)
     for (i = 0; i < len; i++)
     {
         if (buf[i] == '\n') {
-            while (!(usart->config->usart->SR & USART_FLAG_TXE));
+            while (!(usart->config->usart->SR & USART_SR_TC));
             usart->config->usart->DR = '\r';
         }
-        while (!(usart->config->usart->SR & USART_FLAG_TXE));
+        while (!(usart->config->usart->SR & USART_SR_TC));
         USART_SendData(usart->config->usart, ((uint8_t *) buf)[i]);
     }
+    stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
     
     return i;
 }
@@ -244,10 +238,18 @@ size_t stm32_usart_write(stm32_usart_t *usart, const uint8_t *buf, size_t len)
 size_t stm32_usart_read(stm32_usart_t *usart, uint8_t *buf, size_t len)
 {
     int i;
+    
+    stm32_power_request(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_request(STM32_POWER_AHB1, usart->config->gpio_clock);
+
     for (i = 0; i < len; i++)
     {
         while (!(usart->config->usart->SR & USART_FLAG_RXNE));
         ((uint8_t *) buf)[i] = USART_ReceiveData(usart->config->usart);
     }
+    
+    stm32_power_release(usart->config->usart_periph_bus, usart->config->usart_clock);
+    stm32_power_release(STM32_POWER_AHB1, usart->config->gpio_clock);
+    
     return i;
 }
