@@ -10,62 +10,23 @@
 #include "platform_res.h"
 
 
-
-
-/* totally hacky, but at least vaguely thread safe
- * We now have a cache size of 1 for each thread
- */
-
-typedef struct GFontCache
-{
-    uint32_t resource_id;
-    GFont font;
-} GFontCache;
-
 uint16_t _fonts_get_resource_id_for_key(const char *key);
 GFont fonts_get_system_font_by_resource_id(uint32_t resource_id);
 
-static GFontCache _app_font_cache;
-static GFontCache _ovl_font_cache;
 
 void fonts_init(void)
 {
 //     KERN_LOG("font", APP_LOG_LEVEL_ERROR, "font init");
-
 }
 
 void fonts_resetcache()
 {
-    AppThreadType thread_type = appmanager_get_thread_type();
-    
-    KERN_LOG("font", APP_LOG_LEVEL_DEBUG, "Purging fonts");
-    /* This is pretty terrible. We assume that the app is removing the memory 
-     * for the font before we kill the cache entry */
-    if (thread_type == AppThreadMainApp)
-    {
-        /* reset it to available. */
-        _app_font_cache.resource_id = 0;
-        _app_font_cache.font = NULL;
-    }
-    else if (thread_type == AppThreadOverlay)
-    {
-        /* reset it to available. */
-        _ovl_font_cache.resource_id = 0;
-        _ovl_font_cache.font = NULL;
-    }
-    else
-    {
-        KERN_LOG("font", APP_LOG_LEVEL_ERROR, "Why you need fonts?");
-    }
+
 }
 
-// get a system font and then cache it. Ugh.
-// TODO make this not suck (RAM)
 GFont fonts_get_system_font(const char *font_key)
 {
-    uint16_t res_id = _fonts_get_resource_id_for_key(font_key);
-    
-    return fonts_get_system_font_by_resource_id(res_id);
+    return font_load_system_font(font_key);
 }
 
 /*
@@ -74,39 +35,7 @@ GFont fonts_get_system_font(const char *font_key)
  */
 GFont fonts_get_system_font_by_resource_id(uint32_t resource_id)
 {
-    GFontCache *cache_item;
-    AppThreadType thread_type = appmanager_get_thread_type();  
-    
-    if (thread_type == AppThreadMainApp)
-    {
-        cache_item = &_app_font_cache;
-    }
-    else if (thread_type == AppThreadOverlay)
-    {
-        cache_item = &_ovl_font_cache;
-    }
-    else
-    {
-        KERN_LOG("font", APP_LOG_LEVEL_ERROR, "Why you need fonts?");
-    }
-
-    if (cache_item->resource_id == resource_id)
-    {
-        return cache_item->font;
-    }
-    
-    /* not cached, load */   
-    if (cache_item->resource_id > 0 && cache_item->font)
-    {
-        app_free(cache_item->font);
-    }
-    
-    uint8_t *buffer = resource_fully_load_id_system(resource_id);
-    
-    cache_item->font = (GFont)buffer;
-    cache_item->resource_id = resource_id;
-
-    return cache_item->font;
+    return font_load_system_font_by_resource_id(resource_id);
 }
 
 /*

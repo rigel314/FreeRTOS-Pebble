@@ -62,6 +62,7 @@ SRCS_all += lib/musl/time/__secs_to_tm.c
 SRCS_all += lib/musl/time/__tm_to_secs.c
 SRCS_all += lib/musl/time/__year_to_secs.c
 SRCS_all += lib/musl/time/__month_to_secs.c
+SRCS_all += lib/musl/stdlib/qsort.c
 
 SRCS_all += lib/neographics/src/common.c
 SRCS_all += lib/neographics/src/context.c
@@ -106,6 +107,7 @@ SRCS_all += rcore/resource.c
 SRCS_all += rcore/watchdog.c
 SRCS_all += rcore/overlay_manager.c
 SRCS_all += rcore/rebble_util.c
+SRCS_all += rcore/font_cache.c
 
 SRCS_all += rcore/protocol/protocol_notification.c
 SRCS_all += rcore/protocol/protocol_system.c

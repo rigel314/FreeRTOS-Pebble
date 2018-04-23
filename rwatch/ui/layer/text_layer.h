@@ -7,6 +7,7 @@
  */
 
 #include "librebble.h"
+#include "font_cache.h"
 
 typedef struct TextLayer
 {

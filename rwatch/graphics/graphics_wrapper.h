@@ -3,12 +3,14 @@
 #include "upng.h"
 #include "png.h"
 #include "graphics.h"
+#include "font_cache.h"
+
 void graphics_fill_rect(n_GContext * ctx, n_GRect rect, uint16_t radius, n_GCornerMask mask);
 void graphics_fill_circle(n_GContext * ctx, n_GPoint p, uint16_t radius);
 void graphics_draw_circle(n_GContext * ctx, n_GPoint p, uint16_t radius);
 void graphics_draw_line(n_GContext * ctx, n_GPoint from, n_GPoint to);
 void graphics_draw_text(
-    n_GContext * ctx, const char * text, n_GFont const font, const n_GRect box,
+    n_GContext * ctx, const char * text, GFont const font, const n_GRect box,
     const n_GTextOverflowMode overflow_mode, const n_GTextAlignment alignment,
     n_GTextAttributes * text_attributes);
 void graphics_draw_bitmap_in_rect(GContext *ctx, GBitmap *bitmap, GRect rect);

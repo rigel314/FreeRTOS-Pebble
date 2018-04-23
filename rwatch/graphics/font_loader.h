@@ -5,6 +5,7 @@
  *
  * Author: Barry Carter <barry.carter@gmail.com>
  */
+#include "font_cache.h"
 
 void fonts_resetcache();
 GFont fonts_get_system_font(const char *key);

@@ -37,7 +37,6 @@
 // text redefines
 #define GTextOverflowMode n_GTextOverflowMode
 #define GTextOverflowModeTrailingEllipsis n_GTextOverflowModeTrailingEllipsis
-#define GFont n_GFont
 #define GTextAlignment n_GTextAlignment
 #define GTextAlignmentLeft n_GTextAlignmentLeft
 #define GTextAlignmentCenter n_GTextAlignmentCenter

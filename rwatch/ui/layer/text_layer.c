@@ -13,8 +13,6 @@ void text_layer_draw(struct Layer *layer, GContext *context);
 void text_layer_ctor(TextLayer *tlayer, GRect frame)
 {
     layer_ctor(&tlayer->layer, frame);
-    // give the layer a reference back to us
-    tlayer->layer.container = tlayer;
     tlayer->text_color = GColorBlack;
     tlayer->background_color = GColorWhite;
     tlayer->text_alignment = GTextAlignmentLeft;
@@ -53,7 +51,7 @@ Layer *text_layer_get_layer(TextLayer *text_layer)
 void text_layer_set_text(TextLayer *text_layer, const char* text)
 {
     text_layer->text = text;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 const char *text_layer_get_text(TextLayer *text_layer)
@@ -64,31 +62,31 @@ const char *text_layer_get_text(TextLayer *text_layer)
 void text_layer_set_background_color(TextLayer *text_layer, GColor color)
 {
     text_layer->background_color = color;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 void text_layer_set_text_color(TextLayer *text_layer, GColor color)
 {
     text_layer->text_color = color;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 void text_layer_set_overflow_mode(TextLayer *text_layer, GTextOverflowMode line_mode)
 {
     text_layer->overflow_mode = line_mode;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 void text_layer_set_font(TextLayer * text_layer, GFont font)
 {   
     text_layer->font = font;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 void text_layer_set_text_alignment(TextLayer *text_layer, GTextAlignment text_alignment)
 {
     text_layer->text_alignment = text_alignment;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 GSize text_layer_get_content_size(TextLayer *text_layer)
@@ -99,28 +97,19 @@ GSize text_layer_get_content_size(TextLayer *text_layer)
 void text_layer_set_size(TextLayer *text_layer, const GSize max_size)
 {
     text_layer->layer.frame.size = max_size;
-    layer_mark_dirty(&text_layer->layer);
+//     layer_mark_dirty(&text_layer->layer);
 }
 
 void text_layer_draw(struct Layer *layer, GContext *context)
 {
-    TextLayer *tlayer = (TextLayer *)layer->container;
+    TextLayer *tlayer = container_of(layer, TextLayer, layer);
     
-//     printf("FONT: v %d lnh %d gcnt %d cp %d has %d cpb %d fis %d f %d\n",
-//            (tlayer->font)->version,
-//            (tlayer->font)->line_height,
-//            (tlayer->font)->glyph_amount,
-//            (tlayer->font)->wildcard_codepoint,
-//            (tlayer->font)->hash_table_size,
-//            (tlayer->font)->codepoint_bytes,
-//            (tlayer->font)->fontinfo_size,
-//            (tlayer->font)->features);
     context->text_color = tlayer->text_color;
     context->fill_color = tlayer->background_color;
 
     GRect bounds = GRect(0, 0, layer->frame.size.w, layer->frame.size.h);
     graphics_fill_rect(context, bounds, 0, GCornerNone);
-
+    
     graphics_draw_text(context, tlayer->text, tlayer->font,
                        bounds, tlayer->overflow_mode,
                        tlayer->text_alignment, &tlayer->text_attributes);

@@ -57,11 +57,11 @@ void graphics_draw_line(n_GContext * ctx, n_GPoint from, n_GPoint to)
 }
 
 void graphics_draw_text(
-    n_GContext * ctx, const char * text, n_GFont const font, const n_GRect box,
+    n_GContext * ctx, const char * text, GFont const font, const n_GRect box,
     const n_GTextOverflowMode overflow_mode, const n_GTextAlignment alignment,
     n_GTextAttributes * text_attributes)
 {
-    n_graphics_draw_text(ctx, text, font, _jimmy_layer_offset(ctx, box),
+    font_draw_text(ctx, text, font, _jimmy_layer_offset(ctx, box),
                             overflow_mode, alignment,
                             text_attributes);
 }
