@@ -1,16 +1,68 @@
-/*things to cache
-
-glyph_info
- space
- hyphen
-*/
+/* font_cache.c
+ * 
+ * A glyph cache for fonts to allow only saving glyphs required 
+ * without loading the font over and over, using lots of memory.
+ * 
+ * Author: Barry Carter <barry.carter@gmail.com>
+ */
+/*
+ * This is a glyph cache. It saves each used character in a font 
+ * inside a cache. This allows us to load the font once, and use 
+ * it over and over without wasting massive amounts of memory.
+ * This allows us to load several fonts at the same time.
+ * 
+ * How does it work?
+ * 
+ * The below spaghetti is a carefully hacked font builder.
+ * We start with an empty font. it has a header, hash, and offset table
+ * No glyphs. This keeps it small. (we could go smaller with a custom font 
+ * with say, 32 hash entries)
+ * When a font is rendered to the screen for the given text (codepoints)
+ * each character (glyph) needed is
+ *   timestamp added after the last font (or offset table)
+ *   font glyph copied in
+ *   offset table entry added that points to this offset (not the timestamp)
+ *   
+ * If there are more characters than the font cache size, we load and return the 
+ * font unadulterated.
+ *
+ * We are constructing a font so we don't need any changed to ngfx. 
+ * The generated font is in near native format, and is very fast 
+ * to render once cached.
+ * The speed is ok on cache checks (more can be done) and returning pre 
+ * cached fonts for render doesn't change the speed of draw from 
+ * previous behaviour.
+ * 
+ * Cache expiry takes the oldest n items to free, and removes them from 
+ * the cache. Then are then re-added to a new font, along with the new glyphs 
+ * 
+ */
 
 #include "librebble.h"
 #include "node_list.h"
 #include "font_cache.h"
 #include "../lib/musl/stdlib/musl_stdlib.h"
 
-#define CACHE_COUNT 16
+#define CACHE_COUNT 22
+
+/* comment me out to disable font debug */
+//#define DEBUG_FONT
+
+#ifdef DEBUG_FONT
+    #define FONT_LOG SYS_LOG
+#else
+    #define FONT_LOG 
+#endif
+
+typedef struct cache_glyph_info_t {
+    uint8_t offset_entry_size;
+    uint16_t font_info_size;
+    uint8_t codepoint_size;
+    uint8_t hash_table_size;
+    uint8_t *hash_entry;
+    uint8_t *offset_entry;
+    uint8_t *glyph_entry;
+} cache_glyph_info_t;
 
 static list_head _font_cache_list_head_app = LIST_HEAD(_font_cache_list_head_app);
 static list_head _font_cache_list_head_ovl = LIST_HEAD(_font_cache_list_head_ovl);
@@ -24,6 +76,7 @@ static uint32_t _create_empty_font(n_GFontInfo *font, n_GFontInfo **font_to_crea
 static font_cache_t *_get_cache_entry_resource(uint16_t resource_id);
 static font_cache_t *_add_font_cache_entry(n_GFontInfo *font, uint16_t resource_id, uint32_t font_size);
 static inline void _offset_entry_set_offset(uint8_t *offset_entry, uint8_t codepoint_bytes, uint32_t offset);
+static font_cache_t *_remove_font_cache_entry(uint16_t resource_id);
 
 font_cache_t *font_load_system_font(const char *font_key)
 {
@@ -44,7 +97,7 @@ font_cache_t *font_load_system_font_by_resource_id(uint32_t resource_id)
     
     /* see if we are already caching this */
     if (fc) {
-        printf("Got Cached Font Res: %d\n", resource_id);
+        FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Already cached res:%d", resource_id);
         return fc;
     }
     
@@ -59,7 +112,7 @@ font_cache_t *font_load_system_font_by_resource_id(uint32_t resource_id)
 
     app_free(buffer);
     
-    printf("Loaded Font %d\n", resource_id);
+    FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Loaded font res:%d", resource_id);
     return c;
 }
 
@@ -74,7 +127,7 @@ void font_draw_text(n_GContext * ctx, const char * text, GFont cached_font, cons
     uint32_t cp_to_exclude[CACHE_COUNT];
     uint32_t next_codepoint = 0, next_i = 0;
     
-    printf("T: %s\n", text);
+    FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Text: %s", text);
     /* see if we need to cache any glyphs */
     while(text[i] != '\0') {
         
@@ -137,7 +190,7 @@ void font_draw_text(n_GContext * ctx, const char * text, GFont cached_font, cons
             total_count > CACHE_COUNT || 
             cp_count > CACHE_COUNT) {
             /* we are now too big to fit into cache. Give up */
-            printf("Serving raw font for dinner\n");
+            FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Serving raw font for dinner. font: 0x%x", cached_font->font);
             uint8_t *buffer = resource_fully_load_id_system(cached_font->resource_id);
 
             n_graphics_draw_text(ctx, text, (n_GFontInfo *)buffer, box,
@@ -148,17 +201,22 @@ void font_draw_text(n_GContext * ctx, const char * text, GFont cached_font, cons
             return;
         }
     }
-printf("Adding %d glyphs to cache %d\n",cp_count,total_count);
-    if (cp_count) {
-        
-        if (cached_font->cached_glyph_count + cp_count > CACHE_COUNT) {
-            _expire_cache_items(cached_font, cp_to_exclude, total_count, cached_font->cached_glyph_count + cp_count - CACHE_COUNT);
+    
+    FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Adding %d to cache. font: 0x%x res: %d", cp_count, cached_font->font, cached_font->resource_id);
+    
+    if (cp_count)
+    {
+        if (cached_font->cached_glyph_count + cp_count > CACHE_COUNT)
+        {
+            _expire_cache_items(cached_font, cp_to_exclude, total_count, 
+                                cached_font->cached_glyph_count + cp_count - CACHE_COUNT);
         }
         
         _add_glyphs_to_cache(cached_font, cp_to_load, cp_count);
     }
-    else {
-        printf("Font was fully cached Res: %d\n", cached_font->resource_id);
+    else
+    {
+        FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Font already fully cached. font: 0x%x res: %d", cached_font->font, cached_font->resource_id);        
     }
 
     n_graphics_draw_text(ctx, text, cached_font->font, box,
@@ -166,7 +224,34 @@ printf("Adding %d glyphs to cache %d\n",cp_count,total_count);
                             text_attributes);
 }
 
+void font_cache_remove_all(void)
+{
+    list_head *lh = _head_for_thread();
+    list_node *ln = list_get_head(lh);
+    uint16_t n = 0;
+    
+    if (!ln)
+        return;
+   
+    while(ln && &lh->node != ln)
+    {
+        font_cache_t *elem = list_elem(ln, font_cache_t, node);
 
+        list_node *lnext = ln->next;
+        list_remove(lh, ln);
+        app_free(elem->font);
+        app_free(elem);
+        ln = lnext;
+        n++;
+    }
+    
+    FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Removed %d fonts from the cache", n);
+}
+
+void font_cache_remove_by_resource_id(uint16_t resource_id)
+{
+    return _remove_font_cache_entry(resource_id);
+}
 
 /* A utility to fill cach_info with all known offsets
  * sizes and all other generally useful font info
@@ -210,6 +295,7 @@ static font_cache_t *_add_font_cache_entry(n_GFontInfo *font, uint16_t resource_
     /* TODO XXX check it's not already there! */
     font_cache_t *cfont = app_calloc(1, sizeof(font_cache_t));
     list_init_node(&cfont->node);
+
     cfont->font = font;
     cfont->resource_id = resource_id;
     
@@ -220,6 +306,23 @@ static font_cache_t *_add_font_cache_entry(n_GFontInfo *font, uint16_t resource_
     list_insert_head(_head_for_thread(), &cfont->node);
     
     return cfont;
+}
+
+/* remove a font to the cache */
+static font_cache_t *_remove_font_cache_entry(uint16_t resource_id)
+{
+    font_cache_t *fc = _get_cache_entry_resource(resource_id);
+    if (!fc)
+        return;
+    
+    app_free(fc->font);
+    
+    list_head *lh = _head_for_thread();
+    list_remove(lh, &fc->node);
+    
+    app_free(fc);
+    
+    return fc;
 }
 
 /* Get a cache entry for a resource Id */
@@ -390,11 +493,14 @@ static bool _is_codepoint_in_cache(font_cache_t *font, uint32_t codepoint)
 void _add_glyphs_to_cache(font_cache_t *cached_font, uint32_t codepoints[], uint16_t codepoint_count)
 {
     cache_glyph_info_t fi;
+    
+#ifdef DEBUG_FONT
     printf("Font Caching Glyphs: ");    
     for (uint16_t i = 0; i < codepoint_count; i++) {
         printf(" %c", codepoints[i]);
     }
     printf("\n");
+#endif
     
     /* we need to load this font now regardless */
     uint8_t *buffer = resource_fully_load_id_system(cached_font->resource_id);
@@ -429,8 +535,8 @@ void _add_glyphs_to_cache(font_cache_t *cached_font, uint32_t codepoints[], uint
         /* offset is NOT tofu or ffff? */
         if (_offset_entry_offset_valid(off, fi.codepoint_size))
         {
-                printf("Already In cache %x\n", *off);
-                continue;
+            FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Codepoint %d already in cache. font: 0x%x res: %d", codepoints[i], cached_font->font, cached_font->resource_id);
+            continue;
         }
         n_GGlyphInfo *gi = n_graphics_font_get_glyph_info(loaded_font, codepoints[i]);
         uint32_t glyph_size = sizeof(n_GGlyphInfo) + (gi->width * gi->height);
@@ -475,7 +581,7 @@ static void _expire_cache_items(font_cache_t *cached_font, uint32_t exclude_code
     _cp_sort_tmp cps[CACHE_COUNT];
     uint16_t codepoint_count = 0;
     cache_glyph_info_t fi;
-    printf("Expiring %d glyphs of %d cached. Total font glyphs: %d\n", remove_count, cached_font->cached_glyph_count, cached_font->font->glyph_amount);
+    FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Expiring %d glyphs of %d cached. Total font glyphs: %d. font: 0x%x res: %d", remove_count, cached_font->cached_glyph_count, cached_font->font->glyph_amount, cached_font->font, cached_font->resource_id);
     
     if (!remove_count || !cached_font->font)
         return;
@@ -485,7 +591,9 @@ static void _expire_cache_items(font_cache_t *cached_font, uint32_t exclude_code
     /* hop through each offset */
     uint8_t *off = fi.offset_entry;
     
+#ifdef DEBUG_FONT
     printf("Font Cache Contents: ");
+#endif
     for (uint32_t i = 0; i < cached_font->font->glyph_amount; i++)
     {
         if (!_offset_entry_offset_valid(off, fi.codepoint_size))
@@ -494,9 +602,13 @@ static void _expire_cache_items(font_cache_t *cached_font, uint32_t exclude_code
             continue;
         }
         off += fi.offset_entry_size;
+#ifdef DEBUG_FONT
         printf(" %c", *off);
     }
     printf(" \n");
+#else
+    }
+#endif
         
     off = fi.offset_entry;
 
@@ -509,14 +621,17 @@ static void _expire_cache_items(font_cache_t *cached_font, uint32_t exclude_code
             continue;
         }
         bool found = false;
-        for (uint16_t exc = 0; exc < exclude_count; exc++) {
-            if (exclude_codepoints[exc] == *off) {
+        for (uint16_t exc = 0; exc < exclude_count; exc++)
+        {
+            if (exclude_codepoints[exc] == *off)
+            {
                 found = true;
                 break;
             }
         }
         
-        if (found) {
+        if (found)
+        {
             off += fi.offset_entry_size;
             continue;
         }
@@ -528,8 +643,9 @@ static void _expire_cache_items(font_cache_t *cached_font, uint32_t exclude_code
         off += fi.offset_entry_size;
         
         /* just in case, quick sanity check. (nope, i'm still insane) */
-        if (codepoint_count > CACHE_COUNT) {
-            printf("Warning, more valid glyphs found than expected found: %d expected %d\n", codepoint_count, CACHE_COUNT);
+        if (codepoint_count > CACHE_COUNT)
+        {
+            FONT_LOG("Font", APP_LOG_LEVEL_WARNING, "Warning, more valid glyphs found than expected found: %d expected %d. font: 0x%x res: %d", codepoint_count, CACHE_COUNT, cached_font->font, cached_font->resource_id);
             break;
         }
     }
@@ -549,12 +665,7 @@ static void _expire_cache_items(font_cache_t *cached_font, uint32_t exclude_code
 
     for (uint16_t i = 0; i < codepoint_count - remove_count; i++)
         codepoints[i + tcnt] = cps[remove_count + i].codepoint;
-    
-    printf("Font Cache After:    ");
-    for (uint16_t i = 0; i < codepoint_count - remove_count + exclude_count; i++)
-        printf(" %c", codepoints[i]);
-    printf("\n");
-    
+
     /* burn the items from the cache */
     n_GFontInfo *new_font;
     uint32_t font_size = _create_empty_font(cached_font->font, &new_font);

@@ -1,5 +1,5 @@
 #pragma once
-/* appmanager.c
+/* node_list.h
  * Routines for a double linked node list
  * (For example usage see window.c)
  * RebbleOS

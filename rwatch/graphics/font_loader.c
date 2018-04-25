@@ -21,7 +21,7 @@ void fonts_init(void)
 
 void fonts_resetcache()
 {
-
+    font_cache_remove_all();
 }
 
 GFont fonts_get_system_font(const char *font_key)

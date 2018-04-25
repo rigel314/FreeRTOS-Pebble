@@ -573,9 +573,13 @@ void appmanager_execute_app(app_running_thread *thread, uint32_t total_app_size)
 
 static void _appmanager_thread_init(void *thread_handle)
 {
+//     vTaskDelay(200);
     app_running_thread *thread = (app_running_thread *)thread_handle;
     assert(thread && "Invalid thread on init!");
     thread->task_handle = xTaskGetCurrentTaskHandle();
+    
+    fonts_resetcache();
+    
     ((VoidFunc)thread->thread_entry)();
 }
 

@@ -73,7 +73,6 @@ void app_event_loop(void)
         KERN_LOG("app", APP_LOG_LEVEL_ERROR, "Naughty! You tried to run an app runloop!. You are not an app");
         return;
     }
-    fonts_resetcache();
     
     KERN_LOG("app", APP_LOG_LEVEL_INFO, "App entered mainloop");
     
