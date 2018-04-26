@@ -190,8 +190,8 @@ void font_draw_text(n_GContext * ctx, const char * text, GFont cached_font, cons
             total_count > CACHE_COUNT || 
             cp_count > CACHE_COUNT) {
             /* we are now too big to fit into cache. Give up */
-            FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Serving raw font for dinner. font: 0x%x", cached_font->font);
-            uint8_t *buffer = resource_fully_load_id_system(cached_font->resource_id);
+            FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Serving raw font for dinner. font: 0x%x res: %d", cached_font->font);
+            uint8_t *buffer = resource_fully_load_id_system(cached_font->resource_id, cached_font->resource_id);
 
             n_graphics_draw_text(ctx, text, (n_GFontInfo *)buffer, box,
                             overflow_mode, alignment,
@@ -224,6 +224,7 @@ void font_draw_text(n_GContext * ctx, const char * text, GFont cached_font, cons
                             text_attributes);
 }
 
+/* Removes all fonts for a given thread */
 void font_cache_remove_all(void)
 {
     list_head *lh = _head_for_thread();
@@ -248,12 +249,7 @@ void font_cache_remove_all(void)
     FONT_LOG("Font", APP_LOG_LEVEL_INFO, "Removed %d fonts from the cache", n);
 }
 
-void font_cache_remove_by_resource_id(uint16_t resource_id)
-{
-    return _remove_font_cache_entry(resource_id);
-}
-
-/* A utility to fill cach_info with all known offsets
+/* A utility to fill cache_info with all known offsets
  * sizes and all other generally useful font info
  */
 static void _create_cache_info(cache_glyph_info_t *cache_info, n_GFontInfo *font)

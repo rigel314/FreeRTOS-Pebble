@@ -38,7 +38,7 @@ static void notification_layer_dtor(NotificationLayer *notification_layer)
         app_free(n);
         
         SYS_LOG("noty", APP_LOG_LEVEL_ERROR, "Deleted all Notifications");
-        break;
+        break; // BUG!?! break immediately? free the chain surely
     }
 
     layer_remove_from_parent(&notification_layer->status_bar.layer);
