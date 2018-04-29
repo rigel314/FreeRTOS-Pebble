@@ -182,7 +182,7 @@ void stm32_dma_rx_isr(stm32_dma_t *dma)
         DMA_ClearITPendingBit(dma->dma_rx_stream, dma->dma_rx_irq_flag);
         
         /* release the clocks we are no longer requiring */
-        stm32_power_release(STM32_POWER_AHB1, dma->dma_clock);
+//         stm32_power_release(STM32_POWER_AHB1, dma->dma_clock);
         /* Trigger the recipient interrupt handler automatically */
     }
     else

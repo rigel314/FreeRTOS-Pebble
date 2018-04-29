@@ -48,7 +48,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 static const hci_transport_config_uart_t config = {
     HCI_TRANSPORT_CONFIG_UART,
     115200, /* start slow */
-    460800,  /* This is pretty hast, but can we go faster? */
+    460800,  /* This is pretty fast, but can we go faster? */
     1,  /* Use hardware flow control */
     NULL
 };
@@ -87,6 +87,10 @@ void bt_device_init(void)
     /* This is to enable the packet dumps */
     
 #ifdef PACKET_LOGGING
+    /* Becuase we want the HCI debug output */
+    stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOE);
+    stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_UART8);
+
     hci_dump_open( NULL, HCI_DUMP_STDOUT );
 #endif
 

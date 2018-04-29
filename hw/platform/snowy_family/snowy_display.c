@@ -100,7 +100,8 @@ static const stm32_spi_config_t _spi6_config = {
     .spi_clock         = RCC_APB2Periph_SPI6,
     .af                = GPIO_AF_SPI6,
     .crc_poly          = 7,
-    .line_polarity     = SPI_CPOL_High
+    .line_polarity     = SPI_CPOL_High,
+    .txrx_dir          = STM32_SPI_DIR_RXTX
 };
 
 static const stm32_dma_t _spi6_dma = {
@@ -171,7 +172,7 @@ void hw_display_init(void)
     GPIO_Init(display.port_display, &gpio_init_disp_o);       
         
     // start SPI
-    _snowy_display_init_SPI6();   
+    _snowy_display_init_SPI6();
 //     _snowy_display_init_dma();
 
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
@@ -228,14 +229,14 @@ void _snowy_display_init_SPI6(void)
 static void _snowy_display_request_clocks()
 {
 //     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-//     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SPI6);
+    stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SPI6);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOG);
 }
 
 static void _snowy_display_release_clocks()
 {
 //     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_DMA2);
-//     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI6);
+    stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI6);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOG);
 }
 

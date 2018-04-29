@@ -65,6 +65,7 @@ static void _usart_init(stm32_usart_t *usart)
     GPIO_InitStruct.GPIO_Speed = GPIO_Speed_100MHz;
     GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+    GPIO_Init(usart->config->gpio_ptr, &GPIO_InitStruct);
     
     if (u->flow_control_enabled)
     {
@@ -73,8 +74,8 @@ static void _usart_init(stm32_usart_t *usart)
                                    (1 << u->gpio_pin_rts_num);
 
         GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL;
+        GPIO_Init(usart->config->gpio_ptr, &GPIO_InitStruct);
     }
-    GPIO_Init(usart->config->gpio_ptr, &GPIO_InitStruct);
     
     USART_DeInit(u->usart);
     USART_StructInit(&USART_InitStruct);
@@ -85,8 +86,6 @@ static void _usart_init(stm32_usart_t *usart)
     USART_InitStruct.USART_Parity = USART_Parity_No;
     USART_InitStruct.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
     
-    /* Choose AF based on USART. only 6 is on AF 8.
-     * not massively portable */
     GPIO_PinAFConfig(u->gpio_ptr, u->gpio_pin_tx_num, u->af);
     GPIO_PinAFConfig(u->gpio_ptr, u->gpio_pin_rx_num, u->af);
 
@@ -152,9 +151,11 @@ void stm32_usart_recv_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
     /* reset the DMA controller ready for rx */
     stm32_dma_rx_reset(usart->dma);
 
+    USART_DMACmd(usart->config->usart, USART_DMAReq_Rx, DISABLE);
+    
     /* init the DMA RX mode */
-    USART_Cmd(usart->config->usart, ENABLE);
     stm32_dma_rx_init(usart->dma, &usart->config->usart->DR, data, len);
+    USART_Cmd(usart->config->usart, ENABLE);
 
     USART_DMACmd(usart->config->usart, USART_DMAReq_Rx, ENABLE);
     stm32_dma_rx_begin(usart->dma);
@@ -166,8 +167,9 @@ void stm32_usart_recv_dma(stm32_usart_t *usart, uint32_t *data, size_t len)
  */
 void stm32_usart_set_baud(stm32_usart_t *usart, uint32_t baud)
 {
-    _usart_init(usart);
+    DRV_LOG("dma", APP_LOG_LEVEL_DEBUG, "Baud");
     usart->baud = baud;
+    _usart_init(usart);
 }
 
 /*
