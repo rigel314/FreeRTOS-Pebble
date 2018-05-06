@@ -13,7 +13,7 @@
 #include "status_bar_layer.h"
 #include "platform_res.h"
 
-const char *test_name = "Test";
+const char * const test_name = "Test";
 
 static Window *s_main_window;
 
@@ -29,12 +29,12 @@ static Time s_last_time;
 
 static void play_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-    printf("UP");
+    printf("UP\n");
 }
 
 static void pause_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-    printf("DOWN");
+    printf("DOWN\n");
 }
 
 static void click_config_provider(void *context)
