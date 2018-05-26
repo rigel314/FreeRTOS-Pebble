@@ -22,7 +22,7 @@ const typedef struct {
     uint8_t dma_irq_rx_pri;
     uint8_t dma_irq_tx_channel;
     uint8_t dma_irq_rx_channel;
-    uint32_t dma_tx_channel_flags; // DMA_FLAG_FEIF7|DMA_FLAG_DMEIF7|DMA_FLAG_TEIF7|DMA_FLAG_HTIF7|DMA_FLAG_TCIF7
+    uint32_t dma_tx_channel_flags; // i.e. DMA_FLAG_FEIF7|DMA_FLAG_DMEIF7|DMA_FLAG_TEIF7|DMA_FLAG_HTIF7|DMA_FLAG_TCIF7
     uint32_t dma_rx_channel_flags;
     uint32_t dma_tx_irq_flag;
     uint32_t dma_rx_irq_flag;
@@ -58,3 +58,23 @@ void stm32_dma_rx_begin(stm32_dma_t *dma);
 
 void stm32_dma_rx_isr(stm32_dma_t *dma);
 void stm32_dma_tx_isr(stm32_dma_t *dma);
+
+/* Util */
+/* Do the donkey work of filling the struct with the channel data */
+#define STM32_DMA_MK_INIT(dma_clock_d, dma_device, dma_tx_stream_d, dma_rx_stream_d, \
+    dma_tx_channel_d, dma_rx_channel_d, tx_pri, rx_pri) \
+  { \
+    .dma_clock            = dma_clock_d, \
+    .dma_tx_stream        = DMA ## dma_device ## _Stream ## dma_tx_stream_d , \
+    .dma_rx_stream        = DMA ## dma_device ## _Stream ## dma_rx_stream_d , \
+    .dma_tx_channel       = DMA_Channel_ ## dma_tx_channel_d , \
+    .dma_rx_channel       = DMA_Channel_ ## dma_rx_channel_d , \
+    .dma_irq_tx_pri       = tx_pri , \
+    .dma_irq_rx_pri       = rx_pri , \
+    .dma_irq_tx_channel   = DMA ## dma_device ## _Stream ## dma_tx_stream_d ## _IRQn, \
+    .dma_irq_rx_channel   = DMA ## dma_device ## _Stream ## dma_rx_stream_d ## _IRQn, \
+    .dma_tx_channel_flags = STM32_DMA_MK_FLAGS(dma_tx_stream_d), \
+    .dma_rx_channel_flags = STM32_DMA_MK_FLAGS(dma_rx_stream_d), \
+    .dma_tx_irq_flag      = DMA_IT_TCIF ## dma_tx_stream_d , \
+    .dma_rx_irq_flag      = DMA_IT_TCIF ## dma_rx_stream_d  \
+};

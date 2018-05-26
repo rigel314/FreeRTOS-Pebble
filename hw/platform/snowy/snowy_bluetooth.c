@@ -38,21 +38,9 @@ static const stm32_usart_config_t _usart1_config = {
     .af                   = GPIO_AF_USART1,
 };
 
-static const stm32_dma_t _usart1_dma = { /* tx: dma stream 7 chan 4, rx: stream 2 chan 4 */
-    .dma_clock            = RCC_AHB1Periph_DMA2,
-    .dma_tx_stream        = DMA2_Stream7,
-    .dma_rx_stream        = DMA2_Stream2,
-    .dma_tx_channel       = DMA_Channel_4,
-    .dma_rx_channel       = DMA_Channel_4,
-    .dma_irq_tx_pri       = 6,
-    .dma_irq_rx_pri       = 8,
-    .dma_irq_tx_channel   = DMA2_Stream7_IRQn,
-    .dma_irq_rx_channel   = DMA2_Stream2_IRQn,
-    .dma_tx_channel_flags = STM32_DMA_MK_FLAGS(7),
-    .dma_rx_channel_flags = STM32_DMA_MK_FLAGS(2),
-    .dma_tx_irq_flag      = DMA_IT_TCIF7,
-    .dma_rx_irq_flag      = DMA_IT_TCIF2
-};
+/* dma tx: dma stream 7 chan 4, rx: stream 2 chan 4. 
+ * irq tx: 6, rx: 8 */
+static const stm32_dma_t _usart1_dma = STM32_DMA_MK_INIT(RCC_AHB1Periph_DMA2, 2, 7, 2, 4, 4, 6, 8); 
 
 static stm32_usart_t _usart1 = {
     &_usart1_config,
@@ -60,7 +48,7 @@ static stm32_usart_t _usart1 = {
     115200 /* initial slow handshake */
 };
 
-/* DMA 2 stream 7 */
+/* DMA 2 stream 7. IRQ handlers */
 STM32_USART_MK_TX_IRQ_HANDLER(&_usart1, 2, 7, bt_stack_tx_done)
 STM32_USART_MK_RX_IRQ_HANDLER(&_usart1, 2, 2, bt_stack_rx_done)
 
