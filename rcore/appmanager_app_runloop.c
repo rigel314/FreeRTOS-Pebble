@@ -9,6 +9,7 @@
 #include "rebbleos.h"
 #include "appmanager.h"
 #include "overlay_manager.h"
+#include "ngfxwrap.h"
 
 void back_long_click_handler(ClickRecognizerRef recognizer, void *context);
 void back_long_click_release_handler(ClickRecognizerRef recognizer, void *context);
@@ -90,6 +91,7 @@ void app_event_loop(void)
         window_single_click_subscribe(BUTTON_ID_BACK, app_back_single_click_handler);
     }
     
+    rwatch_neographics_init();
     window_configure(window_stack_get_top_window());
     
     /* Install our own handler to hijack the long back press

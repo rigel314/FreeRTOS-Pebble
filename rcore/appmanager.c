@@ -51,8 +51,7 @@ static StackType_t _stack_worker[MEMORY_SIZE_WORKER_STACK];
 static StackType_t _stack_overlay[MEMORY_SIZE_OVERLAY_STACK];
 
 /* Initialise everything we know about the different threads */
-/* FIXME, static stuff should live statically */
-app_running_thread _app_threads[MAX_APP_THREADS] = {
+static app_running_thread _app_threads[MAX_APP_THREADS] = {
     {
         .thread_type = AppThreadMainApp,
         .thread_name = "MainApp",
