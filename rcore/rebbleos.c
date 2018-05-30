@@ -27,7 +27,6 @@ void rebbleos_init(void)
     system_status.booted = 0;
     system_status.app_mode = SYSTEM_RUNNING_APP;
     
-    fonts_init();
     resource_init();   
     notification_init();
     overlay_window_init();

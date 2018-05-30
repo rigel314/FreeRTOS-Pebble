@@ -364,7 +364,6 @@ static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, 
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
 {
     bd_addr_t event_addr;
-    uint8_t   rfcomm_channel_nr;
     uint16_t  mtu;
     int i;
     uint8_t event;
@@ -421,7 +420,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                 case RFCOMM_EVENT_INCOMING_CONNECTION:
                     /* data: event (8), len(8), address(48), channel (8), rfcomm_cid (16) */
                     rfcomm_event_incoming_connection_get_bd_addr(packet, event_addr); 
-                    rfcomm_channel_nr = rfcomm_event_incoming_connection_get_server_channel(packet);
+                    uint8_t rfcomm_channel_nr = rfcomm_event_incoming_connection_get_server_channel(packet);
                     rfcomm_channel_id = rfcomm_event_incoming_connection_get_rfcomm_cid(packet);
                     SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "RFCOMM channel requested for %s", /*rfcomm_channel_nr, */bd_addr_to_str(event_addr));
                     rfcomm_accept_connection(rfcomm_channel_id);
