@@ -26,7 +26,7 @@
 #endif
 
 
-void display_init(void);
+uint8_t display_init(void);
 void display_done_ISR(uint8_t cmd);
 void display_reset(uint8_t enabled);
 void display_draw(void);

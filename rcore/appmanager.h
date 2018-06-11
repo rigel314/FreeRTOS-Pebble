@@ -166,7 +166,7 @@ typedef struct app_running_thread_t {
 } app_running_thread;
 
 /* in appmanager.c */
-void appmanager_init(void);
+uint8_t appmanager_init(void);
 void appmanager_timer_add(CoreTimer *timer);
 void appmanager_timer_remove(CoreTimer *timer);
 void app_event_loop(void);

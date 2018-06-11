@@ -35,7 +35,7 @@ static hci_con_handle_t att_con_handle;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 static uint16_t att_read_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size);
 static int att_write_callback(hci_con_handle_t con_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size);
-
+static uint8_t _bt_enabled = 0;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 /* TX outboung buffer pointer.  */
@@ -371,7 +371,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
     if (packet_type == HCI_EVENT_PACKET)
         event = hci_event_packet_get_type(packet);
     
-    if (!rebbleos_module_is_enabled(MODULE_BLUETOOTH))
+    if (!_bt_enabled)
     {
         switch (event)
         {
@@ -382,7 +382,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         return;
                 }
                 SYS_LOG("BTSPP", APP_LOG_LEVEL_INFO, "BTstack up and running.");
-                rebbleos_module_set_status(MODULE_BLUETOOTH, MODULE_ENABLED, MODULE_NO_ERROR);
+                _bt_enabled = 1;
                 break;
         }
         return;

@@ -33,7 +33,6 @@ void _snowy_display_splash(uint8_t scene);
 void _snowy_display_full_init(void);
 void _snowy_display_program_FPGA(void);
 void _snowy_display_send_frame(void);
-void _snowy_display_init_SPI6(void);
 void _snowy_display_cs(uint8_t enabled);
 uint8_t _snowy_display_SPI6_getver(uint8_t data);
 uint8_t _snowy_display_SPI6_send(uint8_t data);
@@ -83,7 +82,6 @@ CCRAM display_t display = {
     .pin_miso        = GPIO_Pin_12,
     .pin_mosi        = GPIO_Pin_14,
     .pin_sck         = GPIO_Pin_13,
-    
     .pin_reset_done  = GPIO_Pin_9,
     .pin_intn        = GPIO_Pin_10,
 };
@@ -99,6 +97,7 @@ static const stm32_spi_config_t _spi6_config = {
     .gpio_clock        = RCC_AHB1Periph_GPIOG,
     .spi_clock         = RCC_APB2Periph_SPI6,
     .af                = GPIO_AF_SPI6,
+    .spi_prescaler     = SPI_BaudRatePrescaler_2,
     .crc_poly          = 7,
     .line_polarity     = SPI_CPOL_High,
     .txrx_dir          = STM32_SPI_DIR_RXTX
@@ -109,7 +108,7 @@ static const stm32_dma_t _spi6_dma = {
     .dma_tx_stream        = DMA2_Stream5,
     .dma_rx_stream        = DMA2_Stream6,
     .dma_tx_channel       = DMA_Channel_1,
-    .dma_rx_channel       = DMA_Channel_0,
+    .dma_rx_channel       = DMA_Channel_1,
     .dma_irq_tx_pri       = 9,
     .dma_irq_rx_pri       = 9,
     .dma_irq_tx_channel   = DMA2_Stream5_IRQn,
@@ -141,7 +140,7 @@ void hw_display_init(void)
     // init display variables
     stm32_power_request(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOG);
-    
+
     //GPIO_InitTypeDef gpio_init_structure;
     GPIO_InitTypeDef gpio_init_disp;
     GPIO_InitTypeDef gpio_init_disp_o;
@@ -172,11 +171,14 @@ void hw_display_init(void)
     GPIO_Init(display.port_display, &gpio_init_disp_o);       
         
     // start SPI
-    _snowy_display_init_SPI6();
-//     _snowy_display_init_dma();
+    stm32_spi_init_device(&_spi6);
+    
+    hw_display_start();
 
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOG);
+
+    return 0;
 }
 
 
@@ -216,14 +218,6 @@ void _snowy_display_init_intn(void)
 
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SYSCFG);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOG);
-}
-
-/*
- * The display hangs off SPI6. Initialise it
- */
-void _snowy_display_init_SPI6(void)
-{
-    stm32_spi_init_device(&_spi6);
 }
 
 static void _snowy_display_request_clocks()

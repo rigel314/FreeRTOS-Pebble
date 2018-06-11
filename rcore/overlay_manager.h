@@ -51,7 +51,7 @@ typedef struct OverlayWindow {
 typedef void (*OverlayCreateCallback)(OverlayWindow *overlay, Window *window);
 
 /* Internal initialiser */
-void overlay_window_init(void);
+uint8_t overlay_window_init(void);
 
 /* Internal. Check if any overlays or windows want a keypress */
 bool overlay_window_accepts_keypress(void);

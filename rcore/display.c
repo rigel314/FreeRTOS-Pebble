@@ -24,20 +24,20 @@ static SemaphoreHandle_t _draw_mutex;
 /*
  * Start the display driver and tasks. Show splash
  */
-void display_init(void)
+uint8_t display_init(void)
 {   
     hw_display_init();
-      
-    // set up the RTOS tasks
-    xTaskCreate(_display_thread, "Display", 480 / 4 + portSTACK_FUDGE_FACTOR, NULL, tskIDLE_PRIORITY + 2UL, &_display_task);
-    
+
     _display_queue = xQueueCreate(2, sizeof(uint8_t));
     _display_mutex = xSemaphoreCreateMutexStatic(&_display_mutex_buf);
     _draw_mutex    = xSemaphoreCreateMutexStatic(&_draw_mutex_mem);
     
-    _display_cmd(DISPLAY_CMD_DRAW, NULL);
-    
+    // set up the RTOS tasks
+    xTaskCreate(_display_thread, "Display", 480 / 4 + portSTACK_FUDGE_FACTOR, NULL, tskIDLE_PRIORITY + 2UL, &_display_task);
+   
     KERN_LOG("Display", APP_LOG_LEVEL_INFO, "Display Tasks Created");
+    
+    return INIT_RESP_ASYNC_WAIT;
 }
 
 /*
@@ -76,7 +76,7 @@ void display_reset(uint8_t enabled)
 static void _display_start_frame(uint8_t xoffset, uint8_t yoffset)
 {
     xSemaphoreTake(_display_mutex, portMAX_DELAY);
-    
+
     hw_display_start_frame(xoffset, yoffset);
     
     // block wait for the draw to finish
@@ -119,9 +119,7 @@ void display_draw(void)
 static void _display_thread(void *pvParameters)
 {
     uint8_t data;
-
-    // XXX Assume once screen is up, we are up.
-    rebbleos_set_system_status(SYSTEM_STATUS_STARTED);
+    os_module_init_complete(0);
     
     while(1)
     {

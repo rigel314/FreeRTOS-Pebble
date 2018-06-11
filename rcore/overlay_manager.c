@@ -25,10 +25,10 @@ static void _overlay_window_draw(void);
 static void _overlay_window_create(OverlayCreateCallback create_callback, void *context);
 static void _overlay_window_destroy(OverlayWindow *overlay_window, bool animated);
 
-void overlay_window_init(void)
+uint8_t overlay_window_init(void)
 {
     _overlay_queue = xQueueCreate(1, sizeof(struct OverlayMessage));
-    
+   
     app_running_thread *thread = appmanager_get_thread(AppThreadOverlay);
     thread->status = AppThreadLoading;
     thread->thread_entry = &_overlay_thread;
@@ -37,6 +37,9 @@ void overlay_window_init(void)
      * not the full supervisory process. It's lightweight
      */
     appmanager_execute_app(thread, 0);
+        
+    /* init must wait for us to complete */
+    return INIT_RESP_ASYNC_WAIT;
 }
 
 /*
@@ -274,10 +277,12 @@ static void _overlay_thread(void *pvParameters)
     OverlayMessage data;
     app_running_thread *_this_thread = appmanager_get_current_thread();
     
-    appmanager_init();
     SYS_LOG("overlay", APP_LOG_LEVEL_INFO, "Starting overlay thread...");
 
+    rwatch_neographics_init();
+    
     _this_thread->status = AppThreadLoaded;
+    os_module_init_complete(0);
     
     while(1)
     {

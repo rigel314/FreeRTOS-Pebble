@@ -86,7 +86,7 @@ static void _process_packet(pbl_transport_packet *pkt);
 static uint8_t _bluetooth_tx(uint8_t *data, uint16_t len);
 
 /* Initialise the bluetooth module */
-void bluetooth_init(void)
+uint8_t bluetooth_init(void)
 {
     _bt_task = xTaskCreateStatic(_bt_thread, 
                                      "BT", STACK_SZ_BT, NULL, 
@@ -102,6 +102,11 @@ void bluetooth_init(void)
     _bt_cmd_queue = xQueueCreate(1, sizeof(rebble_bt_packet));
         
     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "Bluetooth Tasks Created");
+    
+    /* We are going to start the hardware right now */
+    hw_bluetooth_init();
+    
+    return 0;
 }
 
 /*
@@ -111,8 +116,6 @@ void bluetooth_init(void)
  */
 uint32_t bluetooth_send_serial_raw(uint8_t *data, size_t len)
 {
-    if (!rebbleos_module_is_enabled(MODULE_BLUETOOTH)) return 0;
-
     xSemaphoreTake(_bt_tx_mutex, portMAX_DELAY);
 
     bt_device_request_tx(data, len);
@@ -251,16 +254,11 @@ static void _process_packet(pbl_transport_packet *pkt)
 static void _bt_thread(void *pvParameters)
 {  
     SYS_LOG("BT", APP_LOG_LEVEL_INFO, "Starting Bluetooth Module");
-    /* We are going to start the hardware right now, even thought the system
-     * is technically already up. This is becuase bluetooth needs to work on a thread
-     * and we don't have any before system init
-     */
-    hw_bluetooth_init();
+    
     /* We are blocked here while bluetooth further delegates a runloop */
     
     SYS_LOG("BT", APP_LOG_LEVEL_ERROR, "Bluetooth Module DISABLED");
-    rebbleos_module_set_status(MODULE_BLUETOOTH, MODULE_DISABLED, MODULE_ERROR);
-    
+    os_module_init_complete(INIT_RESP_ERROR);
     /* Delete ourself and die */
     vTaskDelete(_bt_task);
     return;
@@ -345,10 +343,8 @@ void bluetooth_send_async(uint8_t *data, size_t len, tx_complete_callback cb)
     xQueueSendToBack(_bt_cmd_queue, &packet, portMAX_DELAY);
 }
     
-uint8_t bluetooth_send(uint8_t *data, size_t len)
+inline uint8_t bluetooth_send(uint8_t *data, size_t len)
 {
-    if (!rebbleos_module_is_enabled(MODULE_BLUETOOTH)) return 0;
-
     return _bluetooth_tx(data, len);
 }
 

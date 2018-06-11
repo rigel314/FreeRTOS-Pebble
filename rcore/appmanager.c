@@ -35,7 +35,7 @@ static void _appmanager_thread_init(void *pvParameters);
 static void _running_app_loop(void);
 
 /* The manager thread needs only a small stack */
-#define APP_THREAD_MANAGER_STACK_SIZE 250
+#define APP_THREAD_MANAGER_STACK_SIZE 350
 static StackType_t _app_thread_manager_stack[APP_THREAD_MANAGER_STACK_SIZE];  // stack + heap for app (in words)
 
 /* Our pre allocated heaps for the different threads 
@@ -85,7 +85,7 @@ static app_running_thread _app_threads[MAX_APP_THREADS] = {
 };
 
 
-void appmanager_init(void)
+uint8_t appmanager_init(void)
 {
     appmanager_app_loader_init();
     appmanager_app_runloop_init();
@@ -103,6 +103,8 @@ void appmanager_init(void)
                                                         &_app_thread_manager_task);
     
     KERN_LOG("app", APP_LOG_LEVEL_INFO, "App thread created");
+    
+    return 0;
 }
 
 
@@ -559,9 +561,6 @@ void appmanager_execute_app(app_running_thread *thread, uint32_t total_app_size)
     
     /* heap is all uint8_t */
     thread->arena = qinit(heap_entry, heap_size);
-    
-    /* DANGER fix this properly. It should not reset here (overlay might be using it) */
-    rwatch_neographics_init();
     
     /* Load the app in a vTask */
     xTaskCreateStatic(_appmanager_thread_init, 

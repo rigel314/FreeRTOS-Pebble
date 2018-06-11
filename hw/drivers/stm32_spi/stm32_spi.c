@@ -22,13 +22,13 @@
 #include "debug.h"
 #include "log.h"
 #include "stm32_spi.h"
-
+#include "platform.h"
 static void _spi_init(stm32_spi_config_t *spi);
 
 void stm32_spi_init_device(stm32_spi_t *spi)
 {
     _spi_init(spi->config);
-    
+
     if (spi->dma)
     {
         stm32_dma_init_device(spi->dma);
@@ -86,15 +86,20 @@ static void _spi_init(stm32_spi_config_t *spi)
     }
     
     GPIO_Init(spi->gpio_ptr, &gpio_init_struct);
-
     stm32_power_release(STM32_POWER_AHB1, spi->gpio_clock);
     
+    volatile uint8_t tmp = spi->spi->DR;
+//         while( !(spi->spi->SR & SPI_I2S_FLAG_RXNE) ); // wait until receive complete
+    SPI_Cmd(spi->spi, DISABLE);
+//     while( spi->spi->SR & SPI_I2S_FLAG_BSY ); // wait until SPI is not busy anymore
+    SPI_DeInit(spi->spi);
+
     spi_init_struct.SPI_Mode = SPI_Mode_Master;     // transmit in master mode, NSS pin has to be always high
     spi_init_struct.SPI_DataSize = SPI_DataSize_8b; // one packet of data is 8 bits wide
     spi_init_struct.SPI_CPOL = spi->line_polarity;        // clock is low when idle
     spi_init_struct.SPI_CPHA = SPI_CPHA_1Edge;      // data sampled at first edge
     spi_init_struct.SPI_NSS = SPI_NSS_Soft;// | SPI_NSSInternalSoft_Set; // set the NSS management to internal and pull internal NSS high
-    spi_init_struct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8; // SPI frequency is APB2 frequency / 8
+    spi_init_struct.SPI_BaudRatePrescaler = spi->spi_prescaler; // SPI frequency is APB2 frequency / 8
     spi_init_struct.SPI_FirstBit = SPI_FirstBit_MSB;// data is transmitted LSB first
     
     /* any CRC poly? */
@@ -102,7 +107,6 @@ static void _spi_init(stm32_spi_config_t *spi)
     SPI_Init(spi->spi, &spi_init_struct); 
 
     SPI_Cmd(spi->spi, ENABLE);
-
     stm32_power_release(spi->spi_periph_bus, spi->spi_clock);    
 }
 
@@ -110,7 +114,7 @@ static void _spi_init(stm32_spi_config_t *spi)
 /*
  * Request transmission of the buffer provider
  */
-void stm32_spi_send_dma(stm32_spi_t *spi, uint32_t *data, size_t len)
+void stm32_spi_send_dma(stm32_spi_t *spi, uint8_t *data, size_t len)
 {
     /* XXX released in IRQ */
     stm32_power_request(spi->config->spi_periph_bus, spi->config->spi_clock);
@@ -135,7 +139,7 @@ void stm32_spi_send_dma(stm32_spi_t *spi, uint32_t *data, size_t len)
 /*
  * Some data arrived from the spi
  */
-void stm32_spi_recv_dma(stm32_spi_t *spi, uint32_t *data, size_t len)
+void stm32_spi_recv_dma(stm32_spi_t *spi, uint8_t *data, size_t len)
 {
     DMA_InitTypeDef dma_init_struct;
 
@@ -197,3 +201,15 @@ void stm32_spi_write(stm32_spi_t *spi, unsigned char c)
 //     while( !(spi->config->spi->SR & SPI_I2S_FLAG_RXNE) ); // wait until receive complete
 //     while( spi->config->spi->SR & SPI_I2S_FLAG_BSY ); // wait until SPI is not busy anymore
 }
+
+
+uint8_t stm32_spi_write_read(stm32_spi_t *spi, unsigned char c)
+{
+    while (!(spi->config->spi->SR & SPI_SR_TXE))
+        ;
+    SPI1->DR = c;
+    while (!(spi->config->spi->SR & SPI_SR_RXNE))
+        ;
+    return spi->config->spi->DR;
+}
+

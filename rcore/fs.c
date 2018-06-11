@@ -128,7 +128,7 @@ void fs_init()
      * a fileystem here.  */
     _fs_read_file_hdr(0, &buffer);
     if (hdr->v_0x5001 != 0x5001) {
-        KERN_LOG("flash", APP_LOG_LEVEL_ERROR, "this doesn't appear to be a Pebble filesystem");
+        KERN_LOG("flash", APP_LOG_LEVEL_ERROR, "this doesn't appear to be a Pebble filesystem %x", hdr->v_0x5001);
         _fs_valid = 0;
         return;
     }

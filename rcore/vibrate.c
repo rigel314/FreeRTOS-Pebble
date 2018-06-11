@@ -90,7 +90,7 @@ static void _print_pattern(const VibratePattern_t *pattern);
 /*
  * Initialize the vibration controller and tasks
  */
-void vibrate_init(void)
+uint8_t vibrate_init(void)
 {
     int rv;
     
@@ -100,6 +100,8 @@ void vibrate_init(void)
     assert(rv == pdPASS);
     
     _vibrate_queue = xQueueCreate(VIBRATE_QUEUE_MAX_ITEMS, sizeof(VibratePattern_t*));
+    
+    return 0;
 }
 
 /**

@@ -16,9 +16,11 @@ static StaticSemaphore_t _res_mutex_buf;
 
 uint32_t _resource_get_app_res_slot_address(const struct file *file);
 
-void resource_init()
+uint8_t resource_init()
 {
     _res_mutex = xSemaphoreCreateMutexStatic(&_res_mutex_buf);
+    
+    return 0;
 }
 
 /*
