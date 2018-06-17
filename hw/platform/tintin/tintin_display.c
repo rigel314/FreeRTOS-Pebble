@@ -20,7 +20,7 @@
 #include "stm32_spi.h"
 
 /* comment out of you don't want DMA */
-#define USE_DMA
+#define DMA_ENABLED
 
 /* How many rows do we want to send at once 
  * NOTE: This is going to use more buffer ram the biggger you go
@@ -59,7 +59,7 @@ static const stm32_dma_t _spi2_dma = {
 
 static stm32_spi_t _spi2 = {
     &_spi2_config,
-#ifdef USE_DMA
+#ifdef DMA_ENABLED
     &_spi2_dma, /* dma */
 #else
     NULL
@@ -119,14 +119,14 @@ void hw_display_start() {
 }
 
 void hw_display_start_frame(uint8_t x, uint8_t y) {
-#ifdef USE_DMA
+#ifdef DMA_ENABLED
     hw_display_start_frame_dma(x, y);
     return;
 #else
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_request(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
 
-//     DRV_LOG("Display", APP_LOG_LEVEL_DEBUG, "tintin: here we go, slowly blitting %d %d", x, y);
+    DRV_LOG("Display", APP_LOG_LEVEL_DEBUG, "tintin: here we go, slowly blitting %d %d", x, y);
     GPIO_WriteBit(GPIOB, 1 << DISPLAY_CS, 1);
     delay_us(7);
     stm32_spi_write(&_spi2, DISPLAY_FRAME_START);
@@ -209,9 +209,12 @@ static void _spi_tx_done(void)
     row_index = 0;
     
     // if we are finished sending  each column, then reset and stop
-   stm32_spi_write(&_spi2, 0);
-//     delay_us(7);
+    stm32_spi_write(&_spi2, 0);
+    delay_us(7);
     GPIO_WriteBit(GPIOB, 1 << DISPLAY_CS, 0);
+    
+    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
+    stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
     
     display_done_ISR(0);
 }
