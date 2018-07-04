@@ -122,7 +122,6 @@ static void _spi_init(stm32_spi_config_t *spi)
     stm32_power_release(spi->spi_periph_bus, spi->spi_clock);
 }
 
-
 /*
  * Request transmission of the buffer provider
  */
@@ -131,25 +130,20 @@ void stm32_spi_send_dma(stm32_spi_t *spi, uint8_t *data, size_t len)
     SPI_LOG("SPI", APP_LOG_LEVEL_INFO, "SPI Tx %d", len);
     /* XXX released in IRQ */
     stm32_power_request(spi->config->spi_periph_bus, spi->config->spi_clock);
-    stm32_power_request(STM32_POWER_AHB1, spi->dma->dma_clock);
 
     /* reset the DMA controller ready for tx */
     stm32_dma_tx_disable(spi->dma);
     /* Turn off the SPI DMA for initialisation */
     SPI_I2S_DMACmd(spi->config->spi, SPI_I2S_DMAReq_Tx, DISABLE);
-    /* ready for DMA */
-    SPI_Cmd(spi->config->spi, ENABLE);
-    stm32_power_release(STM32_POWER_AHB1, spi->dma->dma_clock);
-
-    stm32_dma_tx_init(spi->dma, (void *)&spi->config->spi->DR, data, len, 1);
-    
+    stm32_dma_tx_init(spi->dma, (void *)&spi->config->spi->DR, data, len, 0);
     /* Turn on our SPI and then the SPI DMA */
+    SPI_Cmd(spi->config->spi, ENABLE);
+    /* ready for DMA */
     SPI_I2S_DMACmd(spi->config->spi, SPI_I2S_DMAReq_Tx, ENABLE);
 
     /* Lets go! */
     stm32_dma_tx_begin(spi->dma);    
 }
-
 
 /*
  * Read some data from the SPI. Clocks out TX with the dummy char
@@ -198,8 +192,12 @@ uint8_t stm32_spi_send_recv_dma_async(stm32_spi_t *spi, uint8_t *outdata, size_t
     return _stm32_spi_send_recv_dma(spi, outdata, outlen, indata, inlen, 1, 0);
 }
 
-static uint8_t _stm32_spi_send_recv_dma(stm32_spi_t *spi, uint8_t *outdata, size_t outlen, uint8_t *indata, size_t inlen, uint8_t async, uint8_t single_byte)
+/* Do the grunt work of an SPI tx/rx transaction */
+static uint8_t _stm32_spi_send_recv_dma(stm32_spi_t *spi, uint8_t *outdata, size_t outlen, 
+                                        uint8_t *indata, size_t inlen, uint8_t async, uint8_t single_byte)
 {
+    /* This is unfortunate that we are reserving two clocks here. 
+     * One for RX ISR to turn off, one for TX */
     stm32_power_request(spi->config->spi_periph_bus, spi->config->spi_clock);
     stm32_power_request(spi->config->spi_periph_bus, spi->config->spi_clock);
     
@@ -240,7 +238,6 @@ static uint8_t _stm32_spi_send_recv_dma(stm32_spi_t *spi, uint8_t *outdata, size
     }
     return 0;
 }
-
 
 /* Poll for the transfer complete flags, then deinit the device */
 uint8_t stm32_spi_poll_wait(stm32_spi_t *spi, uint16_t timeout)
@@ -298,9 +295,11 @@ void stm32_spi_tx_isr(stm32_spi_t *spi, dma_callback callback)
     /* Trigger the stack's interrupt handler */
     if (callback)
         callback();
+    
     stm32_power_release(spi->config->spi_periph_bus, spi->config->spi_clock);
 }
 
+/* Write a single charaction to the TX line unidirectionally. TX ONLY! */
 void stm32_spi_write(stm32_spi_t *spi, unsigned char c)
 {
 //     spi->config->spi->DR = c;
@@ -312,7 +311,7 @@ void stm32_spi_write(stm32_spi_t *spi, unsigned char c)
 //     while( spi->config->spi->SR & SPI_I2S_FLAG_BSY ); // wait until SPI is not busy anymore
 }
 
-
+/* Do a single charaction SPI transaction (Write + Read) */
 uint8_t stm32_spi_write_read(stm32_spi_t *spi, unsigned char c)
 {
     while (!(spi->config->spi->SR & SPI_SR_TXE))

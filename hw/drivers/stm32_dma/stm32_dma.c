@@ -82,7 +82,7 @@ void stm32_dma_tx_disable(stm32_dma_t *dma)
  * Initialise the DMA channel, and set the data pointers
  * NOTE: This will not send data yet
  */
-void stm32_dma_tx_init(stm32_dma_t *dma, void *periph_address, uint8_t *data, size_t len, uint8_t mem_inc)
+void stm32_dma_tx_init(stm32_dma_t *dma, void *periph_address, uint8_t *data, size_t len, uint8_t single_byte)
 {
     stm32_power_request(STM32_POWER_AHB1, dma->dma_clock);
 
@@ -98,7 +98,7 @@ void stm32_dma_tx_init(stm32_dma_t *dma, void *periph_address, uint8_t *data, si
     dma_init_struct.DMA_Memory0BaseAddr = (uint32_t)data;
     dma_init_struct.DMA_BufferSize = len;
     dma_init_struct.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-    dma_init_struct.DMA_MemoryInc =  mem_inc == 1 ? DMA_MemoryInc_Disable : DMA_MemoryInc_Enable;
+    dma_init_struct.DMA_MemoryInc =  single_byte == 1 ? DMA_MemoryInc_Disable : DMA_MemoryInc_Enable;
     dma_init_struct.DMA_Mode = DMA_Mode_Normal;
     dma_init_struct.DMA_PeripheralInc  = DMA_PeripheralInc_Disable;
     dma_init_struct.DMA_FIFOMode  = DMA_FIFOMode_Disable;

@@ -32,13 +32,13 @@ typedef void (*dma_callback)(void);
 
    
 void stm32_dma_init_device(stm32_dma_t *dma);
-void stm32_dma_tx_reset(stm32_dma_t *dma);
+void stm32_dma_tx_disable(stm32_dma_t *dma);
 void stm32_dma_tx_init(stm32_dma_t *dma, void *periph_address, uint8_t *data, size_t len, uint8_t mem_inc);
 void stm32_dma_tx_begin(stm32_dma_t *dma);
-void stm32_dma_rx_reset(stm32_dma_t *dma);
-void stm32_dma_rx_init(stm32_dma_t *dma, void *periph_address, uint8_t *data, size_t len);
-void stm32_dma_rx_begin(stm32_dma_t *dma);
 
+void stm32_dma_rx_disable(stm32_dma_t *dma);
+void stm32_dma_rx_init(stm32_dma_t *dma, void *periph_addr, uint8_t *data, size_t len);
+void stm32_dma_rx_begin(stm32_dma_t *dma);
 uint8_t stm32_dma_rx_isr(stm32_dma_t *dma);
 uint8_t stm32_dma_tx_isr(stm32_dma_t *dma);
 
