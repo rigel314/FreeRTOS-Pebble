@@ -4,6 +4,7 @@
  * RebbleOS
  *
  * Author: Joshua Wise <joshua@joshuawise.com>
+ *         Barry Carter <barry.carter@gmail.com>
  */
 
 #include <stm32f2xx.h>
@@ -24,8 +25,10 @@
 
 /* How many rows do we want to send at once 
  * NOTE: This is going to use more buffer ram the biggger you go
+ * also make sure its divisible by 168 lest you be doomed to 
+ * sending too many bytes and having to fix it.
  */
-#define ROW_COUNT 8
+#define _DMA_ROW_COUNT 8
 
 static const stm32_spi_config_t _spi2_config = {
     .spi                  = SPI2,
@@ -38,7 +41,9 @@ static const stm32_spi_config_t _spi2_config = {
     .spi_clock            = RCC_APB1Periph_SPI2,
     .af                   = GPIO_AF_SPI2,
     .txrx_dir             = STM32_SPI_DIR_TX,
-    .crc_poly             = 7 /* Um */
+    .spi_prescaler        = SPI_BaudRatePrescaler_8,
+    .crc_poly             = 7,
+    .line_polarity        = SPI_CPOL_Low
 };
 
 static const stm32_dma_t _spi2_dma = {
@@ -66,8 +71,12 @@ static stm32_spi_t _spi2 = {
 #endif
 };
 
+static void _send_next(uint32_t row);
 static void _spi_tx_done(void);
+
+/* TX ISR for DMA */
 STM32_SPI_MK_TX_IRQ_HANDLER(&_spi2, 1, 4, _spi_tx_done)
+
 #define DISPLAY_CLOCK 1
 #define DISPLAY_CS    12
 
@@ -153,28 +162,28 @@ void hw_display_start_frame_dma(uint8_t x, uint8_t y) {
 
 //     DRV_LOG("Display", APP_LOG_LEVEL_DEBUG, "tintin: Display Yeeehaw (DMA) %d %d", x, y);
     GPIO_WriteBit(GPIOB, 1 << DISPLAY_CS, 1);
-    delay_us(7);
+    delay_us(10);
     stm32_spi_write(&_spi2, DISPLAY_FRAME_START);
     
     /* Start the transfer */
     _send_next(0);
 }
 
-void _send_next(uint32_t row)
+static void _send_next(uint32_t row)
 {
-    uint16_t len = 20 * ROW_COUNT;
-    static uint8_t row_buf[20 * ROW_COUNT];
+    static uint8_t row_buf[20 * _DMA_ROW_COUNT];
+    uint16_t len = 20 * _DMA_ROW_COUNT;
     
-    for (int i = 0; i < ROW_COUNT; i++)
+    for (int i = 0; i < _DMA_ROW_COUNT; i++)
     {
-        uint16_t rp = i * 20;
-        row_buf[rp] = __RBIT(__REV(168-row - i));
-
+        uint32_t rp = i * 20;
+        row_buf[rp] = __RBIT(__REV(168 - row - i));
         for (int j = 0; j < 18; j++) {
             row_buf[rp + j + 1] = _display_fb[row + i][17-j];
         }
         row_buf[rp + 19] = 0;
     }
+
     stm32_spi_send_dma(&_spi2, row_buf, len);
 }
 
@@ -189,32 +198,22 @@ uint8_t hw_display_get_state() {
 static void _spi_tx_done(void)
 {
     static uint8_t row_index = 0;
-
-    // check the tx finished
-    while (SPI_I2S_GetFlagStatus(_spi2.config->spi, SPI_I2S_FLAG_TXE) == RESET)
-    {
-    };
     
-    // make sure we are not busy
-    while (SPI_I2S_GetFlagStatus(_spi2.config->spi, SPI_I2S_FLAG_BSY) == SET)
+    if (row_index < 168 - _DMA_ROW_COUNT)
     {
-    };
-    
-    if (row_index < 168 - 1)
-    {
-        row_index += ROW_COUNT;
+        row_index += _DMA_ROW_COUNT;
         _send_next(row_index);
         return;
     }
     row_index = 0;
-    
-    // if we are finished sending  each column, then reset and stop
+
+    /* if we are finished sending each column, then reset and stop */
     stm32_spi_write(&_spi2, 0);
     delay_us(7);
     GPIO_WriteBit(GPIOB, 1 << DISPLAY_CS, 0);
-    
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOB);
     stm32_power_release(STM32_POWER_APB1, RCC_APB1Periph_SPI2);
     
     display_done_ISR(0);
 }
+

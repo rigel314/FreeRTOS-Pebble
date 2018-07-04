@@ -38,9 +38,7 @@ static const stm32_spi_config_t _spi1_config = {
     .line_polarity        = SPI_CPOL_Low,
 };
 
-/* In theory we can use this DMA. The settings below will work on device,
- * but I can't get them working in qemu. 
- * TX RX DMA code has been removed for now.
+/* DMA doesn't work in qemu, so we test and degrade to PIO
  * - ginge
  */
 
@@ -197,15 +195,19 @@ void hw_flash_read_bytes(uint32_t addr, uint8_t *buf, size_t len) {
     stm32_power_request(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
     SPI_Cmd(SPI1, ENABLE);
 
-    _hw_flash_wfidle();    
+    memset(buf, 0, len);
     
+    _hw_flash_wfidle();    
+
+    delay_us(10);
     _hw_flash_enable(1);
+    delay_us(10);
     stm32_spi_write_read(&_spi1, JEDEC_READ);
     stm32_spi_write_read(&_spi1, (addr >> 16) & 0xFF);
     stm32_spi_write_read(&_spi1, (addr >>  8) & 0xFF);
     stm32_spi_write_read(&_spi1, (addr >>  0) & 0xFF);
-
-    /* XXX: could use DMA, conceivably */
+    delay_us(2);
+    
     if (_dma_enabled) {
         stm32_spi_recv_dma_async(&_spi1, buf, JEDEC_DUMMY, len);
         return;
@@ -215,7 +217,9 @@ void hw_flash_read_bytes(uint32_t addr, uint8_t *buf, size_t len) {
             buf[i] = stm32_spi_write_read(&_spi1, JEDEC_DUMMY);
         }
     }
+    delay_us(10);
     _hw_flash_enable(0);
+
     flash_operation_complete(0);
 
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI1);
@@ -224,14 +228,15 @@ void hw_flash_read_bytes(uint32_t addr, uint8_t *buf, size_t len) {
 
 static void _spi_flash_tx_done(void) 
 {
-    ;
+    stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI1);
+    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
+//     delay_us(100);
+    _hw_flash_enable(0);
+    flash_operation_complete_isr(0);
 }
 
 static void _spi_flash_rx_done(void) 
 {
-    stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI1);
-    stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-    flash_operation_complete_isr(0);
-    _hw_flash_enable(0);
+    
 }
 
