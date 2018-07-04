@@ -15,13 +15,31 @@ void back_long_click_handler(ClickRecognizerRef recognizer, void *context);
 void back_long_click_release_handler(ClickRecognizerRef recognizer, void *context);
 void app_select_single_click_handler(ClickRecognizerRef recognizer, void *context);
 void app_back_single_click_handler(ClickRecognizerRef recognizer, void *context);
+static bool _app_buffer_lock_take(uint32_t timeout);
+static bool _app_buffer_lock_give(void);
 bool booted = false;
 
 static xQueueHandle _app_message_queue;
 
+/* A mutex to use for locking draw ops */
+static StaticSemaphore_t _app_draw_mutex_buf;
+static SemaphoreHandle_t _app_draw_mutex;
+
 void appmanager_app_runloop_init(void)
 {
-    _app_message_queue = xQueueCreate(5, sizeof(struct AppMessage));    
+    _app_draw_mutex = xSemaphoreCreateMutexStatic(&_app_draw_mutex_buf);
+    _app_message_queue = xQueueCreate(5, sizeof(struct AppMessage));
+}
+
+
+inline static bool _app_buffer_lock_take(uint32_t timeout)
+{
+    return xSemaphoreTake(_app_draw_mutex, (TickType_t)timeout);
+}
+
+inline bool _app_buffer_lock_give(void)
+{
+    return xSemaphoreGive(_app_draw_mutex);
 }
 
 /* 
@@ -106,7 +124,7 @@ void app_event_loop(void)
     /* clear the queue of any work from the previous app
     * ... such as an errant quit */
     xQueueReset(_app_message_queue);
-    
+
     if (!booted)
     {
         GRect frame = GRect(0, DISPLAY_ROWS - 20, DISPLAY_COLS, 20);
@@ -119,6 +137,9 @@ void app_event_loop(void)
     {
         /* Is there something queued up to do?  If so, we have the potential to do it. */
         TickType_t next_timer = appmanager_timer_get_next_expiry(_this_thread);
+        
+        if (next_timer < 0)
+            next_timer = portMAX_DELAY;
         
         /* we are inside the apps main loop event handler now */
         if (xQueueReceive(_app_message_queue, &data, next_timer))
@@ -152,14 +173,24 @@ void app_event_loop(void)
             }
             else if (data.message_type_id == APP_DRAW)
             {
-                window_draw();
+                /* Request a draw. This is mostly from an app invalidating something */
+                if (_app_buffer_lock_take(0)) {
+                    window_draw();
+                }
+                continue;
+            }
+            else if (data.message_type_id == APP_DRAW_DONE)
+            {
+                display_draw();
+                _app_buffer_lock_give();
+                continue;
             }
         } else {
             appmanager_timer_expired(_this_thread);
+            /* Something changed, lets see if we can draw */
+            printf("ddasdasd\n");
+            appmanager_post_draw_message();
         }
-        
-        /* Something changed, lets see if we can draw */
-        window_draw();
     }
     KERN_LOG("app", APP_LOG_LEVEL_INFO, "App Signalled shutdown...");
     /* We fall out of the apps main_ now and into deinit and thread completion
@@ -173,8 +204,10 @@ TickType_t appmanager_timer_get_next_expiry(app_running_thread *thread)
 
     if (thread->timer_head) {
         TickType_t curtime = xTaskGetTickCount();
-        if (curtime > thread->timer_head->when)
+        if (curtime > thread->timer_head->when) {
+        printf("t %d %d\n", curtime,thread->timer_head->when);
             next_timer = 0;
+        }
         else
             next_timer = thread->timer_head->when - curtime;
     } else {

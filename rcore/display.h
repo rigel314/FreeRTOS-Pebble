@@ -33,4 +33,4 @@ void display_draw(void);
 uint8_t *display_get_buffer(void);
 
 bool display_buffer_lock_give(void);
-bool display_buffer_lock_take(uint16_t timeout);
+bool display_buffer_lock_take(uint32_t timeout);

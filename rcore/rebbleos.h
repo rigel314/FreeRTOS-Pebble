@@ -48,6 +48,7 @@ typedef struct SystemSettings {
 } SystemSettings;
 
 void rebbleos_init(void);
+void os_module_init_complete(uint8_t result);
 SystemSettings *rebbleos_get_settings(void);
 
 #define INIT_RESP_OK            0

@@ -46,5 +46,13 @@ void appmanager_post_draw_message(void)
     AppMessage am = (AppMessage) {
         .message_type_id = APP_DRAW
     };
-    appmanager_post_generic_app_message(&am, 10);
+    appmanager_post_generic_app_message(&am, portMAX_DELAY);
+}
+
+void appmanager_post_draw_display_message(void)
+{
+    AppMessage am = (AppMessage) {
+        .message_type_id = APP_DRAW_DONE
+    };
+    appmanager_post_generic_app_message(&am, portMAX_DELAY);
 }

@@ -9,6 +9,7 @@
 #include "task.h"
 #include "stdio.h"
 #include "rebbleos.h"
+#include "watchdog.h"
 #include "ngfxwrap.h"
 #include "overlay_manager.h"
 #include "notification_manager.h"
@@ -28,7 +29,7 @@ SystemSettings _system_settings =
 
 void rebbleos_init(void)
 {   
-    xTaskCreate(_os_thread, "OS", 620 + portSTACK_FUDGE_FACTOR, NULL, tskIDLE_PRIORITY + 6UL, &_os_task);
+    xTaskCreate(_os_thread, "OS", 1920, NULL, tskIDLE_PRIORITY + 6UL, &_os_task);
     _os_init_sem = xSemaphoreCreateBinary();
 }
 
@@ -59,7 +60,7 @@ static void _os_thread(void *pvParameters)
     _module_init(notification_init, "Notifications");
     _module_init(overlay_window_init, "Overlay");
     _module_init(appmanager_init, "Main App");
-    _module_init(bluetooth_init, "Bluetooth");
+//     _module_init(bluetooth_init, "Bluetooth");
 
     //while(1)
         // block forever in slumber?

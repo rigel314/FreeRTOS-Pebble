@@ -35,7 +35,7 @@ static void _appmanager_thread_init(void *pvParameters);
 static void _running_app_loop(void);
 
 /* The manager thread needs only a small stack */
-#define APP_THREAD_MANAGER_STACK_SIZE 350
+#define APP_THREAD_MANAGER_STACK_SIZE 450
 static StackType_t _app_thread_manager_stack[APP_THREAD_MANAGER_STACK_SIZE];  // stack + heap for app (in words)
 
 /* Our pre allocated heaps for the different threads 
@@ -564,7 +564,7 @@ void appmanager_execute_app(app_running_thread *thread, uint32_t total_app_size)
     
     /* Load the app in a vTask */
     xTaskCreateStatic(_appmanager_thread_init, 
-                        "dynapp", 
+                        thread->thread_name, 
                         thread->stack_size, 
                         (void *)thread, 
                         tskIDLE_PRIORITY + thread->thread_priority, 

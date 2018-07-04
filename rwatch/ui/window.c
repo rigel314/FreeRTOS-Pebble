@@ -385,26 +385,22 @@ void window_draw(void)
         SYS_LOG("window", APP_LOG_LEVEL_ERROR, "XXX Please find the correct mechanism! (did you mean overlay_x?).");
         return;
     }
-    
+
     /* Make sure noone else can draw while we are drawing */
-    display_buffer_lock_take(500);
+    display_buffer_lock_take(portMAX_DELAY);
 
     Window *wind = window_stack_get_top_window();
 
-    if (wind == NULL)
-        return;
-    
-    if (wind->is_render_scheduled)
+    if (wind && wind->is_render_scheduled)
+    {
+        printf("WDirta\n");
         rbl_window_draw(wind);
+    }
 
-    wind->is_render_scheduled = false;
-    
     /* This will be deferred to the overlay renderer */
-    overlay_window_draw();
-    /* Now sit and wait for the overlay to signal done */
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-    /* Unlock the draw mutex */
+    overlay_window_draw(wind && wind->is_render_scheduled);
+        
+    wind->is_render_scheduled = false;
     display_buffer_lock_give();
 }
 
