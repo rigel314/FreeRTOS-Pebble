@@ -230,7 +230,6 @@ static void _spi_flash_tx_done(void)
 {
     stm32_power_release(STM32_POWER_APB2, RCC_APB2Periph_SPI1);
     stm32_power_release(STM32_POWER_AHB1, RCC_AHB1Periph_GPIOA);
-//     delay_us(100);
     _hw_flash_enable(0);
     flash_operation_complete_isr(0);
 }

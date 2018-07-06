@@ -242,9 +242,10 @@ static void _overlay_window_destroy(OverlayWindow *overlay_window, bool animated
     appmanager_post_draw_message();
 }
 
+static bool _draw;
+
 static void _overlay_window_draw(bool window_is_dirty)
 {
-    bool draw = window_is_dirty;
     app_running_thread *appthread = appmanager_get_thread(AppThreadMainApp);
     
     if (appmanager_get_thread_type() != AppThreadOverlay)
@@ -252,6 +253,7 @@ static void _overlay_window_draw(bool window_is_dirty)
         SYS_LOG("window", APP_LOG_LEVEL_ERROR, "Someone not overlay thread is trying to draw. Tsk.");
         return;
     }
+    _draw = window_is_dirty;
     
     display_buffer_lock_take(portMAX_DELAY);
     
@@ -266,18 +268,15 @@ static void _overlay_window_draw(bool window_is_dirty)
         rbl_window_draw(window);
         
         if (window->is_render_scheduled)
-            draw = true;
+            _draw = true;
         
         window->is_render_scheduled = false;
     }
 
     display_buffer_lock_give();
-    
-    if (!draw)
-        return;
-    
+        
     /* We get to call it. Final draw is done here. we ask app thread to do it.*/
-    appmanager_post_draw_display_message();
+    appmanager_post_draw_display_message((int *)&_draw);
 }
 
 static void _overlay_thread(void *pvParameters)

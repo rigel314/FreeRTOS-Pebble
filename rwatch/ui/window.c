@@ -385,7 +385,6 @@ void window_draw(void)
         SYS_LOG("window", APP_LOG_LEVEL_ERROR, "XXX Please find the correct mechanism! (did you mean overlay_x?).");
         return;
     }
-
     /* Make sure noone else can draw while we are drawing */
     display_buffer_lock_take(portMAX_DELAY);
 
@@ -393,7 +392,6 @@ void window_draw(void)
 
     if (wind && wind->is_render_scheduled)
     {
-        printf("WDirta\n");
         rbl_window_draw(wind);
     }
 

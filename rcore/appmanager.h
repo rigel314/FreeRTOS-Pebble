@@ -189,7 +189,7 @@ void appmanager_app_main_entry(void);
 App *app_manager_get_apps_head();
 void appmanager_post_button_message(ButtonMessage *bmessage);
 void appmanager_post_draw_message(void);
-void appmanager_post_draw_display_message(void);
+void appmanager_post_draw_display_message(uint8_t *draw_to_display);
 void appmanager_app_start(char *name);
 void appmanager_app_quit(void);
 void appmanager_post_generic_app_message(AppMessage *am, TickType_t timeout);

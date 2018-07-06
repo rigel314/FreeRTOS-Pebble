@@ -95,7 +95,7 @@ void app_event_loop(void)
     
     if (_this_thread->thread_type != AppThreadMainApp)
     {
-        KERN_LOG("app", APP_LOG_LEVEL_ERROR, "Naughty! You tried to run an app runloop!. You are not an app");
+        KERN_LOG("app", APP_LOG_LEVEL_ERROR, "Runloop: You are not an app");
         return;
     }
     
@@ -124,6 +124,7 @@ void app_event_loop(void)
     /* clear the queue of any work from the previous app
     * ... such as an errant quit */
     xQueueReset(_app_message_queue);
+    _app_buffer_lock_give();
 
     if (!booted)
     {
@@ -174,21 +175,34 @@ void app_event_loop(void)
             else if (data.message_type_id == APP_DRAW)
             {
                 /* Request a draw. This is mostly from an app invalidating something */
-                if (_app_buffer_lock_take(0)) {
+                if (_app_buffer_lock_take(0))
+                {
                     window_draw();
+                }
+                else
+                {
+                    /* Keep posting onto the queue the draw command
+                     * at least until the display is done and we can honour the first draw request
+                     * If we don't, then we can occasionally miss a draw request, 
+                     * leading to it coming it on an unrelated tick, or on the next. 
+                     * bit spammy / polly but it isn't too frequent and and least it yields */
+                    appmanager_post_draw_message();
                 }
                 continue;
             }
             else if (data.message_type_id == APP_DRAW_DONE)
             {
-                display_draw();
+                uint8_t should_draw = (uint8_t)*((uint8_t *)data.payload);
+
+                if (should_draw == 1)
+                    display_draw();
+
                 _app_buffer_lock_give();
                 continue;
             }
         } else {
             appmanager_timer_expired(_this_thread);
             /* Something changed, lets see if we can draw */
-            printf("ddasdasd\n");
             appmanager_post_draw_message();
         }
     }
@@ -205,7 +219,6 @@ TickType_t appmanager_timer_get_next_expiry(app_running_thread *thread)
     if (thread->timer_head) {
         TickType_t curtime = xTaskGetTickCount();
         if (curtime > thread->timer_head->when) {
-        printf("t %d %d\n", curtime,thread->timer_head->when);
             next_timer = 0;
         }
         else
