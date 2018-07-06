@@ -92,6 +92,7 @@ void app_event_loop(void)
     AppMessage data;
     app_running_thread *_this_thread = appmanager_get_current_thread();
     App *_running_app = _this_thread->app;
+    bool draw_requested = false;
     
     if (_this_thread->thread_type != AppThreadMainApp)
     {
@@ -186,7 +187,7 @@ void app_event_loop(void)
                      * If we don't, then we can occasionally miss a draw request, 
                      * leading to it coming it on an unrelated tick, or on the next. 
                      * bit spammy / polly but it isn't too frequent and and least it yields */
-                    appmanager_post_draw_message();
+                    draw_requested = true;
                 }
                 continue;
             }
@@ -198,6 +199,12 @@ void app_event_loop(void)
                     display_draw();
 
                 _app_buffer_lock_give();
+                
+                if (draw_requested)
+                {
+                    appmanager_post_draw_message();
+                    draw_requested = false;
+                }
                 continue;
             }
         } else {
