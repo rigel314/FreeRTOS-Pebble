@@ -113,6 +113,7 @@ typedef struct AppTypeHeader {
 #define APP_TICK         2
 #define APP_DRAW         3
 #define APP_DRAW_DONE    4
+#define APP_DISPLAY_DONE 5
 
 #define APP_TYPE_SYSTEM  0
 #define APP_TYPE_FACE    1
@@ -188,7 +189,7 @@ void appmanager_app_runloop_init(void);
 void appmanager_app_main_entry(void);
 App *app_manager_get_apps_head();
 void appmanager_post_button_message(ButtonMessage *bmessage);
-void appmanager_post_draw_message(void);
+void appmanager_post_draw_message(uint16_t timeout_ms);
 void appmanager_post_draw_display_message(uint8_t *draw_to_display);
 void appmanager_app_start(char *name);
 void appmanager_app_quit(void);

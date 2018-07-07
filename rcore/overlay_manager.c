@@ -239,7 +239,7 @@ static void _overlay_window_destroy(OverlayWindow *overlay_window, bool animated
     
     /* when a window dies, we ask nicely for a repaint */
     window_dirty(true);
-    appmanager_post_draw_message();
+    appmanager_post_draw_message(portMAX_DELAY);
 }
 
 static bool _draw;
@@ -254,9 +254,7 @@ static void _overlay_window_draw(bool window_is_dirty)
         return;
     }
     _draw = window_is_dirty;
-    
-    display_buffer_lock_take(portMAX_DELAY);
-    
+
     OverlayWindow *ow;
     list_foreach(ow, &_overlay_window_list_head, OverlayWindow, node)
     {
@@ -273,8 +271,6 @@ static void _overlay_window_draw(bool window_is_dirty)
         window->is_render_scheduled = false;
     }
 
-    display_buffer_lock_give();
-        
     /* We get to call it. Final draw is done here. we ask app thread to do it.*/
     appmanager_post_draw_display_message((int *)&_draw);
 }
@@ -329,7 +325,7 @@ static void _overlay_thread(void *pvParameters)
             /* When we need to update draw, we post it to the main app. This way
              * we guarantee the background is drawn first.
              * App thread will then defer back to this thread to draw any overlays */
-            appmanager_post_draw_message();
+            appmanager_post_draw_message(portMAX_DELAY);
         }
     }
 }

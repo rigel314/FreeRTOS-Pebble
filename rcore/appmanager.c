@@ -290,6 +290,7 @@ static void _app_management_thread(void *parms)
                          * and launch the app
                          */
                         KERN_LOG("app", APP_LOG_LEVEL_INFO, "Waiting for app to close...");
+                        vTaskDelay(pdMS_TO_TICKS(10));
                         xQueueSendToBack(_app_thread_queue, &am, (TickType_t)100);
                         continue;
                     }

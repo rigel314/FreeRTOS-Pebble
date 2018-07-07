@@ -41,12 +41,12 @@ void appmanager_post_button_message(ButtonMessage *bmessage)
     appmanager_post_generic_app_message(&am, 10);
 }
 
-void appmanager_post_draw_message(void)
+void appmanager_post_draw_message(uint16_t timeout_ms)
 {
     AppMessage am = (AppMessage) {
         .message_type_id = APP_DRAW
     };
-    appmanager_post_generic_app_message(&am, portMAX_DELAY);
+    appmanager_post_generic_app_message(&am, pdMS_TO_TICKS(timeout_ms));
 }
 
 void appmanager_post_draw_display_message(uint8_t *draw_to_display)
@@ -56,4 +56,13 @@ void appmanager_post_draw_display_message(uint8_t *draw_to_display)
         .payload = (void *)draw_to_display
     };
     appmanager_post_generic_app_message(&am, portMAX_DELAY);
+}
+
+void appmanager_app_display_done(void)
+{
+    AppMessage am = (AppMessage) {
+        .message_type_id = APP_DISPLAY_DONE,
+        .payload = NULL
+    };
+    appmanager_post_generic_app_message(&am, 10);
 }

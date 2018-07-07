@@ -77,17 +77,14 @@ void display_reset(uint8_t enabled)
  */
 static void _display_start_frame(uint8_t xoffset, uint8_t yoffset)
 {
-    display_buffer_lock_take(portMAX_DELAY);
-
     hw_display_start_frame(xoffset, yoffset);
     
     
     // block wait for the draw to finish
     // this is invoked via the ISR
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    
-    // unlock the mutex
-    display_buffer_lock_give();
+
+    appmanager_app_display_done();
 }
 
 /*
