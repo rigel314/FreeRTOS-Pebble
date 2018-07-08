@@ -50,6 +50,9 @@ QEMU ?= qemu-pebble
 # output directory
 BUILD = build
 
+GIT_SHA := $(shell git rev-parse HEAD | sed -re 's/^(.......).*/\1/')
+GIT_DIRTY := $(shell [ $$(git describe --dirty --always|grep -- '-dirty$$') ] && echo -dirty)
+
 all: $(PLATFORMS)
 
 # Build rules for each platform, evaluated below.
@@ -103,7 +106,7 @@ $(BUILD)/$(1)/fw.qemu_flash.bin: Resources/$(1)_boot.bin $(BUILD)/$(1)/tintin_fw
 
 $(BUILD)/$(1)/$(1).pbz: $(BUILD)/$(1)/tintin_fw.bin $(BUILD)/$(1)/res/$(1)_res.pbpack LICENSE
 	$(call SAY,[$(1)] PBZ $$@)
-	$(QUIET)Utilities/mkpbz.py -p $(HWREV_$(1)) -c $(shell git describe --always --dirty --exclude '*') -v $(shell git describe --always --dirty) -l LICENSE $(BUILD)/$(1)/tintin_fw.bin $(BUILD)/$(1)/res/$(1)_res.pbpack $$@
+	$(QUIET)Utilities/mkpbz.py -p $(HWREV_$(1)) -c $(GIT_SHA)$(GIT_DIRTY) -v $(shell git describe --always --dirty) -l LICENSE $(BUILD)/$(1)/tintin_fw.bin $(BUILD)/$(1)/res/$(1)_res.pbpack $$@
 
 .PRECIOUS: $(BUILD)/$(1)/tintin_fw.bin $(BUILD)/$(1)/tintin_fw.elf
 
